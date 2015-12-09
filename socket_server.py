@@ -5,118 +5,91 @@ import select
 
 
 class Socket:
-    def __init__(self, port, host=socket.gethostbyname(socket.gethostname()), buffer_size=2048, client_timeout=10, server_timeout=1):
+    def __init__(self,
+                 port=1234,
+                 host=socket.gethostbyname(socket.gethostname()),
+                 BUFFER_SIZE=2048,
+                 QUEUE_SIZE=100,
+                 SERVER_EPOLL_BLOCK_TIME=10,
+                 CLIENT_EPOLL_BLOCK_TIME=1 ):
         # If no host is given the server is hosted on the local ip
 
         # Starting the server socket
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.settimeout(server_timeout)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((host, port))
-        self.server_socket.listen(5)
+        self.server_socket.listen(QUEUE_SIZE)
+        self.server_socket.setblocking(0)
 
-        self.trigger_select_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.trigger_select_socket.connect((host, port))
-        conn, addr = self.server_socket.accept()
+        self.server_epoll = select.epoll()
+        self.server_epoll.register(self.server_socket.fileno(), select.EPOLLIN)
+
+        self.client_epoll = select.epoll()
+
+        self.clients = {}
+
+        self.trigger_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.trigger_client_socket.connect((host, port))
+        self.trigger_server_socket, _ = self.server_socket.accept()
+        self.client_epoll.register(self.trigger_server_socket.fileno(), select.EPOLLIN)
+
+        self.serve = True
 
         self.host = host
         self.port = port
-        self.serve = True
-        self.buffer_size = buffer_size
-        self.clients = [Connection(conn, addr, 0.1)]
-        self.ready_clients = [self.clients[0]]
-        self.client_timeout = client_timeout
+
+        self.BUFFER_SIZE = BUFFER_SIZE
+        self.SERVER_EPOLL_BLOCK_TIME = SERVER_EPOLL_BLOCK_TIME
+        self.CLIENT_EPOLL_BLOCK_TIME = CLIENT_EPOLL_BLOCK_TIME
+
+    def clients_serve_forever(self):
+        while self.serve:
+            events = self.client_epoll.poll(self.CLIENT_EPOLL_BLOCK_TIME)
+            for fileno, event in events:
+                if event == select.EPOLLIN:
+                    try:
+                        data = self.clients[fileno].conn.recv(self.BUFFER_SIZE)
+                    except socket.error:
+                        self.unregister(fileno)
+
+                    if data == b'':
+                        self.unregister(fileno)
+                    else:
+                        self.clients[fileno].recv_buffer.append(data)
+                        threading.Thread(target=self.on_message_recv, args=(self.clients[fileno],)).start()
+
+                elif event and select.EPOLLHUP:
+                    self.unregister(fileno)
+
+    def unregister(self, fileno):
+        self.client_epoll.unregister(fileno)
+        threading.Thread(target=self.on_client_disconnect, args=(self.clients[fileno],)).start()
 
     def start(self):
         """
         Starts the server main loop threads
         """
-        threading.Thread(target=self.server_thread).start()
-        threading.Thread(target=self.clients_thread).start()
+        threading.Thread(target=self.server_serve_forever).start()
+        threading.Thread(target=self.clients_serve_forever).start()
         self.on_start()
 
-    def server_thread(self):
+    def server_serve_forever(self):
         """
         Handles new incoming connections
         """
         while self.serve:
-            # Pauses the thread until a new incoming connection is detected
-            r_list, _, _ = select.select((self.server_socket,), (), ())
-            try:
-                conn, addr = self.server_socket.accept()
-                threading.Thread(target=self.new_client, args=(conn, addr)).start()
-            except socket.timeout:
-                print('TImed out')
+            events = self.server_epoll.poll(self.SERVER_EPOLL_BLOCK_TIME)
+            for event, fileno in events:
+                if event:
+                    conn, addr = self.server_socket.accept()
+                    conn = Connection(conn, addr)
+                    self.clients[conn.fileno()] = conn
+                    self.client_epoll.register(conn.fileno(), select.EPOLLIN)
 
-    def new_client(self, conn, addr):
-        connection = Connection(conn, addr, self.client_timeout)
-        self.clients.append(connection)
-        self.ready_clients.append(connection)
-        self.trigger_client_thread()
-        self.on_client_connect(connection)
-
-    def clients_thread(self):
-        """
-        Handles new incoming messages from clients
-        """
-        while self.serve:
-            r_list, _, _ = select.select(self.ready_clients, (), ())
-            # print('client thread triggered')
-            for conn in r_list:
-                if conn == self.clients[0]:
-                    conn.conn.recv(1)
-                else:
-                    self.ready_clients.remove(conn)
-                    threading.Thread(target=self.new_msg, args=(conn,)).start()
-
-    def new_msg(self, conn):
-        try:
-            message = conn.recv(self.buffer_size)
-        except ValueError:
-            # Closing connection on receiving empty array
-            self.close_connection(conn)
-            return
-
-        self.on_message_recv(conn)
-
-        if conn in self.clients:
-            self.ready_clients.append(conn)
-            self.trigger_client_thread()
-
-
-    def trigger_client_thread(self):
-        # When the self.ready_connections list has changed the select.select
-        # function needs to be triggered in order to register the changes
-        # This is a bit ugly but I think it is efficient enough to work well
-        self.trigger_select_socket.send(b'0')
-
-    def close_connection(self, conn):
-        self.before_close_connection(conn)
-        try:
-            self.ready_clients.remove(conn)
-        except ValueError:
-            pass
-
-        try:
-            self.clients.remove(conn)
-        except ValueError:
-            pass
-
-        self.trigger_client_thread()
-
-        try:
-            conn.conn.shutdown(1)
-        except:
-            pass
-
-        conn.conn.close()
+                    threading.Thread(target=self.on_client_connect, args=(conn, )).start()
 
     # ---------------------------- the "on" functions --------------------------------
-    def on_client_connect(self, client):
-        pass
-
-    def on_incoming_message(self, client):
-        # Here the user is expected to empty the receiving buffer from the client
+    def on_client_connect(self, conn):
         pass
 
     def on_start(self):
@@ -125,34 +98,31 @@ class Socket:
     def on_message_recv(self, conn):
         # Triggers when server receives a message from the client
         # The message can be found in conn.recv_buffer where each
-        # message up to self.buffer_size is stored in a list
+        # messages up to self.buffer_size is stored in a list
         pass
 
-    def before_close_connection(self, conn):
+    def on_client_disconnect(self, conn):
         pass
     # --------------------------------------------------------------------------------
 
 
 class Connection:
-    def __init__(self, conn, address, timeout=10.0):
+    def __init__(self, conn, address):
         self.conn = conn
         self.address = address
 
-        self.conn.settimeout(timeout)
         self.recv_buffer = []
         self.send_buffer = []
 
         self.flushing_send_buffer = False
 
+        self.conn.setblocking(0)
+
     def fileno(self):
         return self.conn.fileno()
 
-    def recv(self, buffer_size):
-        data = self.conn.recv(buffer_size)
-        if data == b'':
-            raise ValueError('Received empty byte array from client')
-        else:
-            self.recv_buffer.append(data)
+    def close(self):
+        return self.conn.close()
 
     def send(self, data):
         self.send_buffer.append(data)
@@ -165,34 +135,39 @@ class Connection:
                 while total_sent < to_send:
                     sent = self.conn.send(frame[total_sent:])
                     if sent == 0:
-                        raise ValueError('Zero bytes sent to client')
+                        raise SendError('Could not send some or all of a frame to: %s' % self.getip())
                     else:
                         total_sent += sent
             else:
                 self.flushing_send_buffer = False
 
+    def getip(self):
+        return '%s:%s' % self.address
 
-
+class SendError(Exception):
+    pass
 
 if __name__ == '__main__':
     class sock(Socket):
         def __init__(self, port):
             Socket.__init__(self, port)
 
-        def on_client_connect(self, client):
-            # print('Client connected')
-            pass
-
         def on_start(self):
-            print('Server started: ', self.host, ':', self.port)
+            print('Server started on: ', self.host, self.port)
+
+        def on_client_connect(self, conn):
+            # print(conn.getip(), 'Connected')
+            pass
 
         def on_message_recv(self, conn):
-            for i in self.clients[1:]:
-                i.send(conn.recv_buffer[-1])
-            pass
+            conn.send(b'hello from server')
+            # print(conn.recv_buffer)
 
-        def before_close_connection(self, conn):
-            print('Closing connection')
+        def on_client_disconnect(self, conn):
+            # print('Client disconnected')
+            del self.clients[conn.fileno()]
+            conn.close()
+
 
     s = sock(1234)
     s.start()
