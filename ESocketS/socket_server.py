@@ -80,7 +80,6 @@ class Socket:
             self.on_warning('Failed to remove: %s because client not registered in the epoll object' % conn.getip())
 
     def register(self, fileno):
-        print('hello from register')
         self.client_epoll.register(fileno, select.EPOLLIN)
         threading.Thread(target=self.on_client_connect, args=(self.clients[fileno],)).start()
 
@@ -193,15 +192,15 @@ if __name__ == '__main__':
             print('Server started on: ', self.host, self.port)
 
         def on_client_connect(self, conn):
-            print(conn.getip(), 'Connected')
+            # print(conn.getip(), 'Connected')
             pass
 
         def on_message_recv(self, conn):
             conn.send(b'hello from server\n')
-            print(conn.recv_buffer)
+            # print(conn.recv_buffer)
 
         def on_client_disconnect(self, conn):
-            print('Client disconnected')
+            # print('Client disconnected')
             del self.clients[conn.fileno()]
             conn.close()
 

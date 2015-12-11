@@ -2,5 +2,8 @@
 setup.cfg
 setup.py
 ESocketS/__init__.py
+ESocketS/action_signal.py
+ESocketS/bytes_convert.py
+ESocketS/connection.py
 ESocketS/performance_test.py
 ESocketS/socket_server.py
