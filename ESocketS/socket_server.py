@@ -8,6 +8,7 @@ from bytes_convert import bytes2int
 from time import sleep, time
 import errno
 
+
 class Socket:
     def __init__(self,
                  port=1234,
@@ -139,8 +140,6 @@ class Socket:
 
         self.server_socket.close()
 
-
-
         sleep(max(self.CLIENT_EPOLL_BLOCK_TIME, self.SERVER_EPOLL_BLOCK_TIME))
         self.on_server_shut_down()
 
@@ -150,6 +149,7 @@ class Socket:
         """
         while self.serve:
             events = self.server_epoll.poll(self.SERVER_EPOLL_BLOCK_TIME)
+            print(events)
             for event, fileno in events:
                 if event:
                     conn, addr = self.server_socket.accept()
