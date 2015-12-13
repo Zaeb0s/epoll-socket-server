@@ -3,9 +3,10 @@ import socket
 import threading
 import select
 from connection import Connection
-from action_signal import Action
-from bytes_convert import bytes2int
-from time import sleep, time
+import connection
+# from action_signal import Action
+# from bytes_convert import bytes2int
+# from time import sleep, time
 import errno
 from queue import Queue
 
@@ -61,7 +62,6 @@ class Socket:
         self.accept_clients_thread = threading.Thread(target=self.accept_clients)  # Uses the server socket to accept new clients
         self.recv_data_thread = threading.Thread(target=self.recv_data)  # Uses the client sockets to recv data
         self.add_client_thread = threading.Thread(target=self.add_client) # Uses the add_queue to register new clients
-        self.handle_recv_data_thread = threading.Thread(target=self.handle_recv_data)  # Uses the recv_queue to handle incoming data
 
     def accept_clients(self):
         """ Uses the server socket to accept incoming connections
@@ -92,23 +92,17 @@ class Socket:
             for fileno, event in events:
                 if event:
                     try:
-                        data = self.clients[fileno].conn.recv(self.BUFFER_SIZE)
+                        data = self.clients[fileno].recv(self.BUFFER_SIZE)
                     except socket.error as e:
                         if e.args[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
                             # since this is a non-blocking socket.
                             self.unregister(fileno)
                         continue
-
-                    if data == b'':
+                    except connection.Broken:
                         self.unregister(fileno)
-                    else:
-                        self.recv_queue.put([fileno, data])
+                        continue
 
-    def handle_recv_data(self):
-        while self.serve:
-            fileno, data = self.recv_queue.get()
-            self.clients[fileno].recv_buffer.append(data)
-            self.on_message_recv(fileno, data)
+                    threading.Thread(target=self.on_message_recv, args=(fileno, data)).start()
 
     def unregister(self, fileno):
         try:
@@ -121,7 +115,6 @@ class Socket:
         self.accept_clients_thread.start()
         self.recv_data_thread.start()
         self.add_client_thread.start()
-        self.handle_recv_data_thread.start()
         self.on_start()
 
     # ---------------------------- the "on" functions --------------------------------
@@ -135,7 +128,7 @@ class Socket:
         # Triggers when server receives a message from the client
         # The message can be found in conn.recv_buffer where each
         # messages up to self.buffer_size is stored in a list
-        print(data)
+        pass
 
     def on_client_disconnect(self, conn):
         pass
@@ -161,24 +154,27 @@ if __name__ == '__main__':
             print('Server started on: ', self.host, self.port)
 
         def on_client_connect(self, fileno):
-            # print(self.clients[fileno].getip(), 'Connected')
+            print(self.clients[fileno].getip(), 'Connected')
             pass
 
         def on_message_recv(self, fileno, msg):
-            # print(msg)
-            # self.clients[fileno].send(b'hello from server\n')
+            print(msg)
+            self.clients[fileno].send(b'hello from server\n')
             pass
 
         def on_client_disconnect(self, fileno):
-            # print(self.clients[fileno].getip(), 'Disconnected')
-            # self.clients[fileno].close()
+            print(self.clients[fileno].getip(), 'Disconnected')
             del self.clients[fileno]
             pass
+
         def on_server_shutting_down(self):
             print('Server shutting down')
 
         def on_server_shut_down(self):
             print('Server is now closed')
+
+        def on_warning(self, msg):
+            print('Warning: ', msg)
 
     s = sock(1234)
     s.start()
