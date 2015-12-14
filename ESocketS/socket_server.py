@@ -2,11 +2,7 @@
 import socket
 import threading
 import select
-from connection import Connection
-import connection
-# from action_signal import Action
-# from bytes_convert import bytes2int
-# from time import sleep, time
+from ESocketS import connection
 import errno
 from queue import Queue
 
@@ -68,7 +64,7 @@ class Socket(object):
             for fileno, event in events:
                 if event:
                     conn, addr = self.server_socket.accept()
-                    self.add_queue.put(Connection(conn, addr, self.QUEUE_RECV_MESSAGES))
+                    self.add_queue.put(connection.Connection(conn, addr, self.QUEUE_RECV_MESSAGES))
 
     def add_client(self):
         """ Adds a client when client is added to the add_queue queue object
@@ -156,7 +152,7 @@ if __name__ == '__main__':
 
         def on_client_disconnect(self, fileno):
             print(self.clients[fileno].getip(), 'Disconnected')
-            
+
             pass
 
         def on_server_shutting_down(self):
