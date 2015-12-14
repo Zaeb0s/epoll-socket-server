@@ -15,7 +15,7 @@ ESocketS consists of two main classes, the Socket and Connection classes.
 - Socket: The Socket server class
 - Connection: Can be considered as a subclass of the client socket object 
 
-The "on" functions are called by the ESocketS.Socket class at each specific event in a new thread. The functions does not need to be specified in the subclass. However I recommend not playing arround with the other bult in functions.
+The "on" functions are called by the ESocketS.Socket class at each specific event in a new thread. The functions does not need to be specified in the subclass. However I recommend not playing around with the other bult in functions.
 ```python
 #!/bin/env python3
 import ESocketS
@@ -47,6 +47,6 @@ s.start()
 The client objects are stored in in a dictionary s.clients by their corresponding file number.
 
 ## Contact
-Find something hard to understand? Do you have any suggestions of further improvement? If so do not hessitate to contact me on christoffer_zakrisson@hotmail.com
+Find something hard to understand? Do you have any suggestions of further improvement? If so do not hesitate to contact me on christoffer_zakrisson@hotmail.com
 
 
