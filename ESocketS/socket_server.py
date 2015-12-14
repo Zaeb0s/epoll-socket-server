@@ -118,7 +118,7 @@ class Socket:
         self.on_start()
 
     # ---------------------------- the "on" functions --------------------------------
-    def on_client_connect(self, conn):
+    def on_client_connect(self, fileno):
         pass
 
     def on_start(self):
@@ -130,7 +130,7 @@ class Socket:
         # messages up to self.buffer_size is stored in a list
         pass
 
-    def on_client_disconnect(self, conn):
+    def on_client_disconnect(self, fileno):
         pass
 
     def on_server_shutting_down(self):
