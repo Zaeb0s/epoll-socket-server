@@ -9,13 +9,18 @@ EsocketS is written for one purpose above all, servers that need to support a hi
 ```sh
 pip install ESocketS
 ```
-
+### Update
+At the moment (2015-12-14) this module is still new. As I try to integrate it into my other projects I usually find something to improve. So to get the latest version do
+```sh
+pip install ESocketS --upgrade
+```
+See <https://github.com/Zaeb0s/epoll-socket-server> for the latest changes
 ### Integration
 ESocketS consists of two main classes, the Socket and Connection classes.
 - Socket: The Socket server class
 - Connection: Can be considered as a subclass of the client socket object 
 
-The "on" functions are called by the ESocketS.Socket class at each specific event in a new thread. The functions does not need to be specified in the subclass. However I recommend not playing around with the other bult in functions.
+The "on" functions are called by the ESocketS.Socket class at each specific event in a new thread. The functions does not need to be specified in the subclass. However I recommend not playing arround with the other bult in functions.
 ```python
 #!/bin/env python3
 import ESocketS
@@ -31,7 +36,8 @@ class Socket(ESocketS.Socket):
 
     def on_client_disconnect(self, fileno):
         print(self.clients[fileno].getip(), 'Disconnected')
-
+        del self.clients[fileno]
+        
     def on_server_shutting_down(self):
         print('Server shutdown sequence started')
 
@@ -44,9 +50,29 @@ class Socket(ESocketS.Socket):
 s = Socket(port=1234)
 s.start()
 ```
-The client objects are stored in in a dictionary s.clients by their corresponding file number.
+
+The above example shows the simplest way to start a server. For the more advanced user there are several initiation options availible. The following shows all availible parameters and their default values.
+```python
+s = Socket(  port=1234,  #  The server port
+             host=socket.gethostbyname(socket.gethostname()),  # The server host name
+             BUFFER_SIZE=2048,  # The maximum size that the server will receive data at one time from a client
+             QUEUE_SIZE=100,  # The maximum number of clients awaiting to be accepted by the server socket
+             SERVER_EPOLL_BLOCK_TIME=10,  # Each epoll() in the server thread call will block at max this time in seconds
+             CLIENT_EPOLL_BLOCK_TIME=1,    # Each epoll() in the client thread call will block at max this time in seconds
+             QUEUE_RECV_MESSAGES=False)  # Tells wether or not to save the messages received from clients in the s.clients[fileno].recv_queue queue.Queue object  
+```
+The client objects are stored in in a dictionary s.clients by their corresponding file number. NOTE: The client is not deleted from this dictionary on client disconnect, the client is only unregistered from the client epoll object.\
+
+To send a message to a client do
+```python
+s.clients[fileno].send(b'Hello from server')
+```
+Messages can be sent to the same client from multiple threads at the same time without getting scrambled. (Only one thread per user that calls the socket.send function is active at one time) if one thread is currently flushing the s.clients[fileno].send_buffer queue.Queue object a call to s.clients[fileno].send(message) will only put the message into the queue.Queue object
+
+## Planned releases
+- EWebsocketS - A Websocket server based on ESocketS and the RFC6455 websocket protocol
 
 ## Contact
-Find something hard to understand? Do you have any suggestions of further improvement? If so do not hesitate to contact me on christoffer_zakrisson@hotmail.com
+Find something hard to understand? Do you have any suggestions of further improvement? If so do not hessitate to contact me on christoffer_zakrisson@hotmail.com
 
 
