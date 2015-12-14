@@ -59,7 +59,8 @@ s = Socket(  port=1234,  #  The server port
              QUEUE_SIZE=100,  # The maximum number of clients awaiting to be accepted by the server socket
              SERVER_EPOLL_BLOCK_TIME=10,  # Each epoll() in the server thread call will block at max this time in seconds
              CLIENT_EPOLL_BLOCK_TIME=1,    # Each epoll() in the client thread call will block at max this time in seconds
-             QUEUE_RECV_MESSAGES=False)  # Tells wether or not to save the messages received from clients in the s.clients[fileno].recv_queue queue.Queue object  
+             QUEUE_RECV_MESSAGES=False,  # Tells wether or not to save the messages received from clients in the s.clients[fileno].recv_queue queue.Queue object
+             clients_class=connection.Connection)  # This lets a user setup a subclass of the connection.Connection (replace this with the connection.Connection subclass)
 ```
 The client objects are stored in in a dictionary s.clients by their corresponding file number. NOTE: The client is not deleted from this dictionary on client disconnect, the client is only unregistered from the client epoll object.\
 

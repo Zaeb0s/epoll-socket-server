@@ -11,6 +11,7 @@ conections = 20000
 
 def connect(clients):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     conn.connect((host, port))
     clients.append(conn)
         
@@ -19,6 +20,7 @@ try:
     t1 = time.time()
     for i in range(conections):
         threading.Thread(target=connect, args=(clients,)).start()
+        sleep(0.001)
     t2 = time.time()
 
     print('Connect time: ', t2-t1)
@@ -35,8 +37,8 @@ try:
     t2 = time.time()
     print('Total send time: ', t2-t1)
 
-    while True:
-        sleep(10)
+#    while True:
+#        sleep(10)
 
 except KeyboardInterrupt:
     print('Disconnecting clients')

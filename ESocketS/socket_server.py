@@ -13,7 +13,8 @@ class Socket(object):
              QUEUE_SIZE=100,
              SERVER_EPOLL_BLOCK_TIME=10,
              CLIENT_EPOLL_BLOCK_TIME=1,
-             QUEUE_RECV_MESSAGES=False):
+             QUEUE_RECV_MESSAGES=False,
+             clients_class=connection.Connection):
         """
         :param port: The server port
         :param host: The server host name
@@ -23,6 +24,7 @@ class Socket(object):
         :param CLIENT_EPOLL_BLOCK_TIME:
         :param QUEUE_RECV_MESSAGES: Tells wether or not to save the messages received from clients in the
          s.clients[fileno].recv_queue queue.Queue object
+        :param connection_objec: The class used for the clients
         """
         # If no host is given the server is hosted on the local ip
 
@@ -63,14 +65,19 @@ class Socket(object):
             events = self.server_epoll.poll(self.SERVER_EPOLL_BLOCK_TIME)
             for fileno, event in events:
                 if event:
-                    conn, addr = self.server_socket.accept()
-                    self.add_queue.put(connection.Connection(conn, addr, self.QUEUE_RECV_MESSAGES))
+                    try:
+                        conn, addr = self.server_socket.accept()
+                        accepted_clients += 1
+                        print(accepted_clients)
+                        self.add_queue.put(clients_class(conn, addr, self.QUEUE_RECV_MESSAGES))
+                    except BlockingIOError:
+                        threading.Thread(target=self.on_warning, args=('Server epoll triggered but got BlockingIOError',)).start()
 
     def add_client(self):
         """ Adds a client when client is added to the add_queue queue object
         """
         while self.serve:
-            conn = self.add_queue.get()
+            conn = self.add_queue.get(timeout=10)
             fileno = conn.fileno()
             self.clients[fileno] = conn
             self.client_epoll.register(fileno, select.EPOLLIN)
@@ -101,7 +108,7 @@ class Socket(object):
             self.client_epoll.unregister(fileno)
             threading.Thread(target=self.on_client_disconnect, args=(fileno,)).start()
         except FileNotFoundError:
-            self.on_warning('Failed to remove: %s because client not registered in the epoll object' % conn.getip())
+            threading.Thread(target=self.on_warning, args=('Failed to remove: %s because client not registered in the epoll object' % conn.getip(),)).start()
 
     def start(self):
         self.accept_clients_thread.start()
@@ -109,6 +116,8 @@ class Socket(object):
         self.add_client_thread.start()
         self.on_start()
 
+    def connection(self, conn, addr):
+        self
     # ---------------------------- the "on" functions --------------------------------
     def on_client_connect(self, fileno):
         pass
@@ -138,21 +147,21 @@ class Socket(object):
 
 
 if __name__ == '__main__':
-    class sock(Socket):
+    class Sock(Socket):
 
         def on_start(self):
             print('Server started on: ', self.host, self.port)
 
         def on_client_connect(self, fileno):
-            print(self.clients[fileno].getip(), 'Connected')
+            # print(self.clients[fileno].getip(), 'Connected')
             pass
 
         def on_message_recv(self, fileno, msg):
-            print(msg)
+            # print(msg)
+            pass
 
         def on_client_disconnect(self, fileno):
-            print(self.clients[fileno].getip(), 'Disconnected')
-
+            # print(self.clients[fileno].getip(), 'Disconnected')
             pass
 
         def on_server_shutting_down(self):
@@ -164,5 +173,5 @@ if __name__ == '__main__':
         def on_warning(self, msg):
             print('Warning: ', msg)
 
-    s = sock(QUEUE_RECV_MESSAGES='localhost')
+    s = Sock()
     s.start()

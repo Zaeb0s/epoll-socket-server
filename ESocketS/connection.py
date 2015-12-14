@@ -17,7 +17,6 @@ class Connection:
 
         self.conn.setblocking(0)
 
-        self
     def fileno(self):
         return self.conn.fileno()
 
