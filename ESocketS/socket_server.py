@@ -11,15 +11,13 @@ import errno
 from queue import Queue
 
 
-class Socket:
-    def __init__(self,
-             port=1234,
-             host=socket.gethostbyname(socket.gethostname()),
+class Socket(object):
+    def __init__(self, port=1234, host=socket.gethostbyname(socket.gethostname()),
              BUFFER_SIZE=2048,
              QUEUE_SIZE=100,
              SERVER_EPOLL_BLOCK_TIME=10,
              CLIENT_EPOLL_BLOCK_TIME=1,
-             IMMEDIATE_CLIENT_ADD=False):
+             QUEUE_RECV_MESSAGES=False):
         """
         :param port: The server port
         :param host: The server host name
@@ -27,9 +25,8 @@ class Socket:
         :param QUEUE_SIZE: The maximum number of clients awaiting to be accepted by the server socket
         :param SERVER_EPOLL_BLOCK_TIME:
         :param CLIENT_EPOLL_BLOCK_TIME:
-        :param IMMEDIATE_CLIENT_ADD: False = a client can start communicating with the server at MAX after CLIENT_EPOLL_BLOCK_TIME
-        after which the client has been accepted
-        True = The client epoll object will be triggered at client accept
+        :param QUEUE_RECV_MESSAGES: Tells wether or not to save the messages received from clients in the
+         s.clients[fileno].recv_queue queue.Queue object
         """
         # If no host is given the server is hosted on the local ip
 
@@ -39,8 +36,7 @@ class Socket:
         self.BUFFER_SIZE = BUFFER_SIZE
         self.SERVER_EPOLL_BLOCK_TIME = SERVER_EPOLL_BLOCK_TIME
         self.CLIENT_EPOLL_BLOCK_TIME = CLIENT_EPOLL_BLOCK_TIME
-        self.IMMEDIATE_CLIENT_ADD = IMMEDIATE_CLIENT_ADD
-
+        self.QUEUE_RECV_MESSAGES = QUEUE_RECV_MESSAGES
 
         # Starting the server socket
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -72,7 +68,7 @@ class Socket:
             for fileno, event in events:
                 if event:
                     conn, addr = self.server_socket.accept()
-                    self.add_queue.put(Connection(conn, addr))
+                    self.add_queue.put(Connection(conn, addr, self.QUEUE_RECV_MESSAGES))
 
     def add_client(self):
         """ Adds a client when client is added to the add_queue queue object
@@ -147,8 +143,6 @@ class Socket:
 
 if __name__ == '__main__':
     class sock(Socket):
-        def __init__(self, port):
-            Socket.__init__(self, port, CLIENT_EPOLL_BLOCK_TIME=10)
 
         def on_start(self):
             print('Server started on: ', self.host, self.port)
@@ -159,12 +153,10 @@ if __name__ == '__main__':
 
         def on_message_recv(self, fileno, msg):
             print(msg)
-            self.clients[fileno].send(b'hello from server\n')
-            pass
 
         def on_client_disconnect(self, fileno):
             print(self.clients[fileno].getip(), 'Disconnected')
-            del self.clients[fileno]
+            
             pass
 
         def on_server_shutting_down(self):
@@ -176,5 +168,5 @@ if __name__ == '__main__':
         def on_warning(self, msg):
             print('Warning: ', msg)
 
-    s = sock(1234)
+    s = sock(QUEUE_RECV_MESSAGES='localhost')
     s.start()
