@@ -73,6 +73,6 @@ Messages can be sent to the same client from multiple threads at the same time w
 - EWebsocketS - A Websocket server based on ESocketS and the RFC6455 websocket protocol
 
 ## Contact
-Find something hard to understand? Do you have any suggestions of further improvement? If so do not hessitate to contact me on christoffer_zakrisson@hotmail.com
+Find something hard to understand? Do you have any suggestions of further improvement? If so do not hesitate to contact me on christoffer_zakrisson@hotmail.com
 
 
