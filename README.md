@@ -28,6 +28,7 @@ The "on" functions are called by the ESocketS.Socket class at each specific even
 #!/bin/env python3
 import ESocketS
 
+
 class Sock(ESocketS.Socket):
     def on_start(self):
         print('Server started on: ', self.host, self.port)
@@ -40,9 +41,11 @@ class Sock(ESocketS.Socket):
 
     def on_disconnect(self, fileno):
         print(self.clients[fileno].getip(), 'Disconnected')
+        del self.clients[fileno]
 
     def on_abnormal_disconnect(self, fileno, msg):
         print('Abnormal disconnect: ', msg)
+        del self.clients[fileno]
 
     def on_server_shutting_down(self):
         print('Server shutting down')
@@ -56,6 +59,7 @@ class Sock(ESocketS.Socket):
 
 s = Sock()
 s.start()
+
 ```
 
 The above example shows the simplest way to start a server. For the more advanced user there are several initiation options available. The following shows all available parameters and their default values.

@@ -1,9 +1,8 @@
 #!/bin/env python3
 import ESocketS
-import socket
+
 
 class Sock(ESocketS.Socket):
-
     def on_start(self):
         print('Server started on: ', self.host, self.port)
 
@@ -15,9 +14,11 @@ class Sock(ESocketS.Socket):
 
     def on_disconnect(self, fileno):
         print(self.clients[fileno].getip(), 'Disconnected')
+        del self.clients[fileno]
 
     def on_abnormal_disconnect(self, fileno, msg):
         print('Abnormal disconnect: ', msg)
+        del self.clients[fileno]
         
     def on_server_shutting_down(self):
         print('Server shutting down')
@@ -32,10 +33,3 @@ class Sock(ESocketS.Socket):
 s = Sock()
 s.start()
 
-    
-    
-    
-    
-    
-    
-    
