@@ -20,7 +20,7 @@ try:
     t1 = time.time()
     for i in range(conections):
         threading.Thread(target=connect, args=(clients,)).start()
-        sleep(0.001)
+#        sleep(0.001)
     t2 = time.time()
 
     print('Connect time: ', t2-t1)
