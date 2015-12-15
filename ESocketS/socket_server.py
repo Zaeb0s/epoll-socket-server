@@ -14,7 +14,8 @@ class Socket(object):
              SERVER_EPOLL_BLOCK_TIME=10,
              CLIENT_EPOLL_BLOCK_TIME=1,
              QUEUE_RECV_MESSAGES=False,
-             clients_class=connection.Connection):
+             clients_class=connection.Connection,
+             auto_register = True):
         """
         :param port: The server port
         :param host: The server host name
@@ -25,6 +26,11 @@ class Socket(object):
         :param QUEUE_RECV_MESSAGES: Tells wether or not to save the messages received from clients in the
          s.clients[fileno].recv_queue queue.Queue object
         :param connection_objec: The class used for the clients
+        :param auto_register: When the server detects new incoming data it unregisters the client in question
+        from the epoll object while reading the socket.
+        True - Automatically register when server is done receiving from client
+        False - When the user is ready to receive new messages from client the user must again register the client to
+        the client_epoll object using self.register(fileno)
         """
 
         self.serve = True # All mainthreads will run aslong as serve is True
@@ -35,6 +41,7 @@ class Socket(object):
         self.CLIENT_EPOLL_BLOCK_TIME = CLIENT_EPOLL_BLOCK_TIME
         self.QUEUE_RECV_MESSAGES = QUEUE_RECV_MESSAGES
         self.clients_class=clients_class
+        self.auto_register = auto_register
 
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -56,6 +63,12 @@ class Socket(object):
         self.recv_data_thread = threading.Thread(target=self.recv_data)  # Uses the client sockets to recv data
         self.add_client_thread = threading.Thread(target=self.add_client) # Uses the add_queue to register new clients
         self.search_readable_thread = threading.Thread(target=self.search_readable)
+
+    def register(self, fileno):
+        self.client_epoll.register(fileno, select.EPOLLIN)
+
+    def unregister(self, fileno):
+        self.client_epoll.unregister(fileno)
 
     def accept_clients(self):
         """ Uses the server socket to accept incoming connections
@@ -85,7 +98,7 @@ class Socket(object):
         while self.serve:
             events = self.client_epoll.poll(self.CLIENT_EPOLL_BLOCK_TIME)
             for fileno, event in events:
-                self.client_epoll.unregister(fileno)
+                self.unregister(fileno)
                 if event == select.EPOLLIN:
                     self.recv_queue.put(fileno)
                 elif event == select.EPOLLERR:
@@ -96,7 +109,8 @@ class Socket(object):
             fileno = self.recv_queue.get()
             try:
                 msg = self.clients[fileno].recv(self.BUFFER_SIZE)
-                self.client_epoll.register(fileno, select.EPOLLIN)
+                if self.auto_register:
+                    self.register(fileno)
                 threading.Thread(target=self.on_recv(fileno, msg))
             except socket.error:
                 threading.Thread(target=self.on_abnormal_disconnect, args=(fileno, 'Exception: socket.error while receiving data')).start()
