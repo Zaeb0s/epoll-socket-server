@@ -70,12 +70,15 @@ s = Socket(  port=1234,
              QUEUE_SIZE=100,
              SERVER_EPOLL_BLOCK_TIME=10,
              CLIENT_EPOLL_BLOCK_TIME=1,
-             QUEUE_RECV_MESSAGES=False,
              clients_class=connection.Connection,
-             auto_register = True)
+             QUEUE_RECV_MESSAGES=False,
+             auto_register = True
+             run_on_in_subthread=True)
 ```
 * port - The server port
-* host - The server host name
+* host - The serun_on_in_subthread: Specifies whether or not to run the "on" functions in subthreads using
+        threading.Threadrun_on_in_subthread: Specifies whether or not to run the "on" functions in subthreads using
+        threading.Threadrver host name
 * BUFFER_SIZE - The maximum size that the server will receive data at one time from a client
 * QUEUE_SIZE - The maximum number of clients awaiting to be accepted by the server socket
 * SERVER_EPOLL_BLOCK_TIME - Each epoll() in the server thread call will block at max this time in seconds
@@ -83,6 +86,7 @@ s = Socket(  port=1234,
 * QUEUE_RECV_MESSAGES - Tells whether or not to save the messages received from clients in the s.clients[fileno].recv_queue queue.Queue object
 * client_class - This lets a user setup a subclass of the connection.Connection (replace this with the connection.Connection subclass)
 * auto_register - When the server detects new incoming data it unregisters the client in question from the epoll object while reading the socket. True - Automatically register when server is done receiving from client False - When the user is ready to receive new messages from client the user must again register the client to the client_epoll object using self.register(fileno)
+* run_on_in_subthread - Specifies whether or not to run the "on" functions in subthreads using threading.Thread
 
 The client objects are stored in in a dictionary s.clients by their corresponding file number. NOTE: The client is not deleted from this dictionary on client disconnect, the client is only unregistered from the client epoll object.\
 
