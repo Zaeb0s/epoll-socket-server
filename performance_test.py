@@ -3,9 +3,13 @@ import socket
 import threading
 from time import sleep
 import time
+import ESocketS
+
 host = socket.gethostbyname(socket.gethostname())
 port = 1234
 
+server = ESocketS.Socket()
+server.start()
 
 conections = 20000
 
@@ -19,7 +23,8 @@ try:
     clients = []
     t1 = time.time()
     for i in range(conections):
-        threading.Thread(target=connect, args=(clients,)).start()
+        connect(clients)
+  #      threading.Thread(target=connect, args=(clients,)).start()
 #        sleep(0.001)
     t2 = time.time()
 

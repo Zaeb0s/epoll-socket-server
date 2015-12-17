@@ -10,6 +10,7 @@ class Sock(ESocketS.Socket):
         print(self.clients[fileno].getip(), 'Connected')
 
     def on_recv(self, fileno, msg):
+        self.register(fileno)
         print(msg)
 
     def on_disconnect(self, fileno):
@@ -30,6 +31,6 @@ class Sock(ESocketS.Socket):
         print('Warning: ', msg)
 
 
-s = Sock()
+s = Sock(auto_register=False, queue_recv_messages=True)
 s.start()
 
