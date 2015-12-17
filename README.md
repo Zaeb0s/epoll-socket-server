@@ -5,7 +5,8 @@ ESocketS is a python 3 socket.socket server. There are many socket.socket python
 EsocketS is written for one purpose above all, servers that need to support a high client count. An ESocketS server client count is restricted by the amount of file descriptors availible on the system.
 
 ## Important notes about changes
-* 2015-12-25: Changed the name of some of the "on" functions.
+* 2015-12-15: Changed the name of some of the "on" functions.
+* 2015-12-17: Several choices added when calling ESocketS.Socket()
 
 ## How to get started
 ### Installation
@@ -71,7 +72,7 @@ s = Socket(  port=1234,
              SERVER_EPOLL_BLOCK_TIME=10,
              CLIENT_EPOLL_BLOCK_TIME=1,
              clients_class=connection.Connection,
-             QUEUE_RECV_MESSAGES=False,
+             queue_recv_messages=False,
              auto_register = True
              run_on_in_subthread=True)
 ```
@@ -83,7 +84,7 @@ s = Socket(  port=1234,
 * QUEUE_SIZE - The maximum number of clients awaiting to be accepted by the server socket
 * SERVER_EPOLL_BLOCK_TIME - Each epoll() in the server thread call will block at max this time in seconds
 * CLIENT_EPOLL_BLOCK_TIME - Each epoll() in the client thread call will block at max this time in seconds
-* QUEUE_RECV_MESSAGES - Tells whether or not to save the messages received from clients in the s.clients[fileno].recv_queue queue.Queue object
+* queue_recv_messages - Tells whether or not to save the messages received from clients in the s.clients[fileno].recv_queue queue.Queue object
 * client_class - This lets a user setup a subclass of the connection.Connection (replace this with the connection.Connection subclass)
 * auto_register - When the server detects new incoming data it unregisters the client in question from the epoll object while reading the socket. True - Automatically register when server is done receiving from client False - When the user is ready to receive new messages from client the user must again register the client to the client_epoll object using self.register(fileno)
 * run_on_in_subthread - Specifies whether or not to run the "on" functions in subthreads using threading.Thread
