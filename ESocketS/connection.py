@@ -1,5 +1,6 @@
 #!/bin/env python3
 import queue
+from socket import error as SocketError
 
 class Connection:
     def __init__(self, conn, address, recv_queue=False):
@@ -43,7 +44,10 @@ class Connection:
                     to_send = len(data)
                     total_sent = 0
                     while total_sent < to_send:
-                        sent = self.conn.send(data[total_sent:])
+                        try:
+                            sent = self.conn.send(data[total_sent:])
+                        except SocketError:
+                            raise Broken('Could not send some or all of a frame to: %s' % self.getip())
                         if sent == 0:
                             raise Broken('Could not send some or all of a frame to: %s' % self.getip())
                         else:
@@ -62,7 +66,16 @@ class Connection:
 
     def getip(self):
         return '%s:%s' % self.address
-
+    
+    def start_recv_queue(self):
+        """Starts/restarts the recv_buffer
+        """
+        self.recv_buffer = queue.Queue()
+        
+    def stop_recv_queue(self):
+        """Stops incomming messages from beeing stored in the queue
+        """
+        self.recv_buffer = None
 
 class Broken(Exception):
     pass
