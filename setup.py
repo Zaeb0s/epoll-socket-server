@@ -1,6 +1,6 @@
 #!/bin/env python3
-#from distutils.core import setup
-from setuptools import setup
+from distutils.core import setup
+
 setup(
   name = 'ESocketS',
   packages = ['ESocketS'], # this must be the same as the name above
