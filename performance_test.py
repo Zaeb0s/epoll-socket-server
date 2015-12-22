@@ -9,23 +9,23 @@ host = socket.gethostbyname(socket.gethostname())
 port = 1234
 
 server = ESocketS.Socket()
+server.run_in_subthread('all', True)
 server.start()
 
-conections = 20000
+conections = 10000
 
 def connect(clients):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     conn.connect((host, port))
     clients.append(conn)
-        
-try:        
+
+try:
     clients = []
     t1 = time.time()
     for i in range(conections):
-        connect(clients)
-  #      threading.Thread(target=connect, args=(clients,)).start()
-#        sleep(0.001)
+        threading.Thread(target=connect, args=(clients,)).start()
+       # sleep(0.001)
     t2 = time.time()
 
     print('Connect time: ', t2-t1)
@@ -51,6 +51,6 @@ except KeyboardInterrupt:
         i.shutdown(socket.SHUT_RDWR)
         i.close()
     print('Clients disconnected')
-        
-        
-        
+
+
+

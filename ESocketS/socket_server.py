@@ -1,179 +1,264 @@
 #!/bin/env python3
 import socket
 import threading
-import select
-from ESocketS import connection
-import errno
-from queue import Queue
+import selectors
+import queue
+
+class _ClientInfo:
+    is_sending = False
+    is_registered = False
+    data_in_recv_buffer = False
+    _send_queue = queue.Queue()
+
+    def __init__(self, address):
+        self.address = address
 
 
 class Socket:
-    def __init__(self, port=1234, host=socket.gethostbyname(socket.gethostname()),
-             BUFFER_SIZE=2048,
-             QUEUE_SIZE=100,
-             SERVER_EPOLL_BLOCK_TIME=10,
-             CLIENT_EPOLL_BLOCK_TIME=1,
-             clients_class=connection.Connection,
-             queue_recv_messages=False,
-             auto_register=True,
-             run_on_in_subthread=True):
-        """
-        :param port: The server port
-        :param host: The server host name
-        :param BUFFER_SIZE: The maximum size that the server will receive data at one time from a client
-        :param QUEUE_SIZE: The maximum number of clients awaiting to be accepted by the server socket
-        :param SERVER_EPOLL_BLOCK_TIME:
-        :param CLIENT_EPOLL_BLOCK_TIME:
-        :param QUEUE_RECV_MESSAGES: Tells wether or not to save the messages received from clients in the
-         s.clients[fileno].recv_queue queue.Queue object
-        :param connection_objec: The class used for the clients
-        :param auto_register: When the server detects new incoming data it unregisters the client in question
-        from the epoll object while reading the socket.
-        True - Automatically register when server is done receiving from client
-        False - When the user is ready to receive new messages from client the user must again register the client to
-        the client_epoll object using self.register(fileno)
-        :param run_on_in_subthread: Specifies whether or not to run the "on" functions in subthreads using
-        threading.Thread
-        """
 
-        self.serve = True # All mainthreads will run aslong as serve is True
-        self.started = False
+    default_recv_buffsize = 4096
+    started = False
+
+    __server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    __server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    __server_socket.setblocking(False)
+
+    _sel = selectors.EpollSelector()
+
+    __serve = False
+    __shutdown_wait = threading.Event()
+
+    _client_info = {}  # {conn:info_class}
+    _accept_queue = queue.Queue()
+
+    def __init__(self,
+                 port=1234,
+                 host=socket.gethostbyname(socket.gethostname()),
+                 queue_size=10000,
+                 epoll_block_time=1):
+
         self.host = host
         self.port = port
-        self.BUFFER_SIZE = BUFFER_SIZE
-        self.QUEUE_SIZE = QUEUE_SIZE
-        self.SERVER_EPOLL_BLOCK_TIME = SERVER_EPOLL_BLOCK_TIME
-        self.CLIENT_EPOLL_BLOCK_TIME = CLIENT_EPOLL_BLOCK_TIME
-        self.queue_recv_messages = queue_recv_messages
-        self.clients_class=clients_class
-        self.auto_register = auto_register
-        self.run_on_in_subthread = run_on_in_subthread
+        self.queue_size = queue_size
+        self.epoll_block_time = epoll_block_time
 
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.setblocking(0)
+        self._run_in_subthread = {self.on_recv.__name__: False,
+                                  self.on_connect.__name__: False,
+                                  self.on_disconnect.__name__: False,
+                                  self.on_abnormal_disconnect.__name__: False,
+                                  self.on_start.__name__: False,
+                                  self.on_stop.__name__: False,
+                                  self.on_warning.__name__: False}
 
-        self.server_epoll = select.epoll()
-        self.server_epoll.register(self.server_socket.fileno(), select.EPOLLIN)
-        self.client_epoll = select.epoll()
+        self._serve_threads = {'_recv' :
+                                   threading.Thread(target=self._recv),
+                               '_accept' :
+                                   threading.Thread(target=self._accept),
+                               '_handle_connects' :
+                                   threading.Thread(target=self._handle_connects)}
 
-        self.clients = {}  # {fileno:clientobj}
-
-        self.add_queue = Queue(0)
-        self.recv_queue = Queue(0)
-
-        # The four main threads
-        self.accept_clients_thread = threading.Thread(target=self.accept_clients)  # Uses the server socket to accept new clients
-        self.recv_data_thread = threading.Thread(target=self.recv_data)  # Uses the client sockets to recv data
-        self.add_client_thread = threading.Thread(target=self.add_client) # Uses the add_queue to register new clients
-        self.search_readable_thread = threading.Thread(target=self.search_readable)
-
-    def register(self, fileno):
-        self.client_epoll.register(fileno, select.EPOLLIN)
-
-    def unregister(self, fileno):
+    def _recv(self):
         try:
-            self.client_epoll.unregister(fileno)
-        except FileNotFoundError:
-            self.call_on_function(self.on_warning,
-                                  ('Tried to unregister a client but client not currently registered', ))
+            while self.__serve:
+                events = self._sel.select(self.epoll_block_time)
+                for key, mask in events:
+                    self.unregister(key.fileobj)
+                    self._client_info[key.fileobj].data_in_recv_buffer = True
+                    self.recv(key.fileobj)
+        finally:
+            if self._no_serve_alive() == 1:
+                self.__shutdown_wait.set()
 
-    def accept_clients(self):
-        """ Uses the server socket to accept incoming connections
-            because the server socket is non-blocking epoll is used to block until a client is ready to be accepted
-        """
-        while self.serve:
-            events = self.server_epoll.poll(self.SERVER_EPOLL_BLOCK_TIME)
-            for fileno, event in events:
-                if event:
-                    try:
-                        conn, addr = self.server_socket.accept()
-                        self.add_queue.put(self.clients_class(conn, addr, self.queue_recv_messages))
-                    except BlockingIOError:
-                        self.call_on_function(self.on_warning,
-                                              ('Server epoll triggered but got BlockingIOError', ))
+    def _accept(self):
+        server_epoll = selectors.EpollSelector()
+        server_epoll.register(self.__server_socket, selectors.EVENT_READ)
+        try:
+            while self.__serve:
+                server_epoll.select(self.epoll_block_time)
+                try:
+                    conn, address = self.__server_socket.accept()
+                    self._accept_queue.put((conn, address))
 
-    def add_client(self):
-        """ Adds a client when client is added to the add_queue queue object
-        """
-        while self.serve:
-            conn = self.add_queue.get()
-            fileno = conn.fileno()
-            self.clients[fileno] = conn
-            self.client_epoll.register(fileno, select.EPOLLIN)
-            self.call_on_function(self.on_connect,
-                                  (fileno, ))
+                except BlockingIOError:
+                    pass
+        finally:
+            if self._no_serve_alive() == 1:
+                self.__shutdown_wait.set()
 
-    def search_readable(self):
-        while self.serve:
-            events = self.client_epoll.poll(self.CLIENT_EPOLL_BLOCK_TIME)
-            for fileno, event in events:
-                self.unregister(fileno)
-                if event == select.EPOLLIN:
-                    self.recv_queue.put(fileno)
-                elif event == select.EPOLLERR:
-                    self.call_on_function(self.on_abnormal_disconnect,
-                                          (fileno, 'epoll select.EPOLLERR event'))
-
-    def recv_data(self):
-        while self.serve:
-            fileno = self.recv_queue.get()
+    def _handle_connects(self):
+        while self.__serve:
             try:
-                msg = self.clients[fileno].recv(self.BUFFER_SIZE)
-                if self.auto_register:
-                    self.register(fileno)
-                self.call_on_function(self.on_recv,
-                                      (fileno, msg))
-            except socket.error:
-                self.call_on_function(self.on_abnormal_disconnect,
-                                      (fileno, 'Exception: socket.error while receiving data'))
-            except connection.Broken:
-                self.call_on_function(self.on_disconnect,
-                                      (fileno, ))
+                client = self._accept_queue.get(timeout=self.epoll_block_time)
+            except queue.Empty:
+                pass
+            else:
+                client[0].setblocking(False)
+                self._client_info[client[0]] = _ClientInfo(client[1])
+                self.register(client[0])
+                self._call_on_function(self.on_connect, (client[0], ))
+        else:
+            if self._no_serve_alive() == 1:
+                self.__shutdown_wait.set()
+
+    def register(self, conn):
+        try:
+            self._sel.register(conn, selectors.EVENT_READ)
+        except KeyError:
+            # Client is already registered
+            self._call_on_function(self.on_warning,
+                                   ('Tried to register a client that is already registered:'
+                                    ' {}'.format(self._client_info[conn].address),))
+        finally:
+            self._client_info[conn].is_registered = True
+            self._client_info[conn].data_in_recv_buffer = False
+
+    def unregister(self, conn):
+        try:
+            self._sel.unregister(conn)
+        except KeyError:
+            # Conn is already not registered
+            self._call_on_function(self.on_warning,
+                                   ('Tried to unregister a client that is already unregistered:'
+                                   ' {}'.format(self._client_info[conn].address),))
+        finally:
+            self._client_info[conn].is_registered = False
 
     def start(self):
         if self.started:
-            raise error('Server can only be started once')
-        
+            raise OSError('Server can only be started once')
+        self.__serve = True
         self.started = True
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(self.QUEUE_SIZE)
-        
-        self.accept_clients_thread.start()
-        self.search_readable_thread.start()
-        self.recv_data_thread.start()
-        self.add_client_thread.start()
+        self.__server_socket.bind((self.host, self.port))
+        self.__server_socket.listen(self.queue_size)
 
-        self.call_on_function(self.on_start, ())
+        for thread in self._serve_threads.values():
+            thread.start()
+
+        self._call_on_function(self.on_start, ())
+
+    def _no_serve_alive(self):
+        """
+        Determines how many of the main serve threads are alive
+        """
+        no_alive = 0
+        for thread in self._serve_threads.values():
+            if thread.isAlive():
+                no_alive += 1
+        return no_alive
 
     def stop(self):
-        self.serve = False
-        for i in self.clients:
-            self.unregister(i)
-            self.close(i)
-        self.server_socket.close()
-        self.call_on_function(self.on_stop, ())
 
-    def send(self, fileno, msg):
+        if self.started:
+            raise OSError("Can't stop server because it has not been started yet")
+        self.__serve = False
+
+        # Waiting for the serve forever threads to stop
+        self.__shutdown_wait.wait()
+
+        # Disconnecting all users within the selector
+        while len(self._sel._fd_to_key) != 0:
+            self.disconnect(list(self._sel._fd_to_key.values())[0].fileobj)
+
+        self.__server_socket.shutdown(0)
+        self.__server_socket.close()
+        self._call_on_function(self.on_stop, ())
+
+    def disconnect(self, conn):
+        if self._client_info[conn].is_registered:
+            self.unregister(conn)
         try:
-            self.clients[fileno].send(msg)
-        except connection.Broken:
-            self.call_on_function(self.on_abnormal_disconnect,
-                                  (fileno, 'Failed to send data to client'))
-        
-    def close(self, fileno):
-        try:
-            self.clients[fileno].shutdown(socket.SHUT_RDWR)
+            conn.shutdown(socket.SHUT_RDWR)
         except socket.error:
             pass
-        self.clients[fileno].close()
+        conn.close()
+        self._call_on_function(self.on_disconnect, (conn, ))
+        del self._client_info[conn]
 
-    def call_on_function(self, on_function, args):
-        if self.run_on_in_subthread:
+    def _flush_send(self, conn, queue):
+        # queue = self._client_info[conn]._send_queue
+        while not queue.empty():
+            data_to_send = queue.get(timeout=0)
+            total_sent = 0
+            while total_sent < len(data_to_send):
+                sent = conn.send(data_to_send[total_sent:])
+                if sent == 0:
+                    if self._client_info[conn].is_registered:
+                        self.unregister(conn)
+                    self._call_on_function(self.on_abnormal_disconnect, (conn, 'Could not send bytes' ))
+                    return total_sent
+                else:
+                    total_sent += sent
+        else:
+            self._client_info[conn].is_sending = False
+
+    def send(self, conn, data):
+        """
+        The send function is coded so that the user can call the send function
+        from several different threads at the same time but in order for data not
+        to be scrambled only one thread at a time per user is actually sending
+        the data the rest is putting the data into a Queue object for the send
+        thread.
+        Unregisters the user and calls on_abnormal_disconnect if connection broken
+        """
+        self._client_info[conn]._send_queue.put(data)
+        if not self._client_info[conn].is_sending:
+            # If not currently sending startup new thread to flush the send queue
+            self._client_info[conn].is_sending = True
+            threading.Thread(target=self._flush_send,
+                             args=(conn, self._client_info[conn]._send_queue)).start()
+            #self._flush_send(conn)
+
+    def recv(self, conn):
+        try:
+            data = conn.recv(4096)
+        except socket.error:
+            self._call_on_function(self.on_abnormal_disconnect, (conn, 'Error while receiving data'))
+        else:
+            if data == b'':
+                self.disconnect(conn)
+            else:
+                self.register(conn)
+                self._call_on_function(self.on_recv, (conn, data))
+    
+    def client_info(self, conn):
+        return self._client_info[conn.fileno()]
+
+    def get_ip(self, conn):
+        return self._client_info[conn].address
+
+    def get_clients(self):
+        """
+        Returns a generator object containing all clients
+        """
+        return (i for i in self._client_info)
+
+    def run_in_subthread(self, on_function, yes_no):
+        """
+        Gives the ability to change the _run_in_subthread private variable in an easy way
+        if on_functions = 'all' all on_functions are modified
+        """
+        if yes_no:
+            change = True
+        else:
+            change = False
+        if hasattr(on_function, '__name__'):
+            name = on_function.__name__
+            if name in self._run_in_subthread:
+                self._run_in_subthread[on_function.__name__] = change
+                return
+        elif on_function == 'all':
+            for i in self._run_in_subthread:
+                self._run_in_subthread[i] = change
+            return
+
+        raise ValueError('on_function needs to be one of the ESocketS.Socket() "on" functions')
+
+    def _call_on_function(self, on_function, args):
+        if self._run_in_subthread[on_function.__name__]:
             threading.Thread(target=on_function, args=args).start()
         else:
             on_function(*args)
-            
+
     # ---------------------------- the "on" functions --------------------------------
     def on_start(self):
         pass
@@ -181,25 +266,19 @@ class Socket:
     def on_stop(self):
         pass
 
-    def on_recv(self, fileno, msg):
-        # Triggers when server receives a message from the client
-        # The message can be found in conn.recv_buffer where each
-        # messages up to self.buffer_size is stored in a list
+    def on_recv(self, conn, data):
         pass
 
-    def on_connect(self, fileno):
+    def on_connect(self, conn):
         pass
 
-    def on_disconnect(self, fileno):
+    def on_disconnect(self, conn):
         pass
 
-    def on_abnormal_disconnect(self, fileno, msg):
+    def on_abnormal_disconnect(self, conn, msg):
         pass
 
     def on_warning(self, msg):
         pass
 
     # --------------------------------------------------------------------------------
-
-class error(Exception):
-    pass
