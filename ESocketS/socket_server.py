@@ -148,7 +148,7 @@ class Socket:
 
     def stop(self):
 
-        if self.started:
+        if not self.started:
             raise OSError("Can't stop server because it has not been started yet")
         self.__serve = False
 

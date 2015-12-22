@@ -12,7 +12,7 @@ server = ESocketS.Socket()
 server.run_in_subthread('all', True)
 server.start()
 
-conections = 10000
+conections = 20000
 
 def connect(clients):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
