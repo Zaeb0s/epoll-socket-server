@@ -34,8 +34,8 @@ class Socket:
     def __init__(self,
                  port=1234,
                  host=socket.gethostbyname(socket.gethostname()),
-                 queue_size=10000,
-                 epoll_block_time=1):
+                 queue_size=1000,
+                 epoll_block_time=2):
 
         self.host = host
         self.port = port
@@ -163,15 +163,18 @@ class Socket:
         self.__server_socket.close()
         self._call_on_function(self.on_stop, ())
 
-    def disconnect(self, conn):
-        if self._client_info[conn].is_registered:
+    def disconnect(self, conn, normal=True, msg=''):
+        if self.client_info(conn).is_registered:
             self.unregister(conn)
         try:
             conn.shutdown(socket.SHUT_RDWR)
         except socket.error:
             pass
         conn.close()
-        self._call_on_function(self.on_disconnect, (conn, ))
+        if normal:
+            self._call_on_function(self.on_disconnect, (conn, ))
+        else:
+            self._call_on_function(self.on_abnormal_disconnect, (conn, msg))
         del self._client_info[conn]
 
     def _flush_send(self, conn, queue):
@@ -182,9 +185,12 @@ class Socket:
             while total_sent < len(data_to_send):
                 sent = conn.send(data_to_send[total_sent:])
                 if sent == 0:
-                    if self._client_info[conn].is_registered:
-                        self.unregister(conn)
-                    self._call_on_function(self.on_abnormal_disconnect, (conn, 'Could not send bytes' ))
+                    self.disconnect(conn, False,
+                                    'Could not send bytes to {}'.format(self.get_ip(conn)))
+
+                    # if self._client_info[conn].is_registered:
+                    #     self.unregister(conn)
+                    # self._call_on_function(self.on_abnormal_disconnect, (conn,  ))
                     return total_sent
                 else:
                     total_sent += sent
@@ -210,9 +216,10 @@ class Socket:
 
     def recv(self, conn):
         try:
-            data = conn.recv(4096)
+            data = conn.recv(self.default_recv_buffsize)
         except socket.error:
-            self._call_on_function(self.on_abnormal_disconnect, (conn, 'Error while receiving data'))
+            self.disconnect(conn, False,
+                            'Error while receiving data from {}'.format(self.get_ip(conn)))
         else:
             if data == b'':
                 self.disconnect(conn)
@@ -221,10 +228,11 @@ class Socket:
                 self._call_on_function(self.on_recv, (conn, data))
     
     def client_info(self, conn):
-        return self._client_info[conn.fileno()]
+        return self._client_info[conn]
 
-    def get_ip(self, conn):
-        return self._client_info[conn].address
+    @staticmethod
+    def get_ip(conn):
+        return conn.getpeername()
 
     def get_clients(self):
         """
