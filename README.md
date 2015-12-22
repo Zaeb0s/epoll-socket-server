@@ -35,13 +35,15 @@ class Sock(ESocketS.Socket):
         print('Server started on: ', self.host, self.port)
 
     def on_connect(self, conn):
-        print(self.client_info(conn), 'Connected')
+        print(self.get_ip(conn), 'Connected')
 
     def on_recv(self, conn, data):
-        self.send(conn, data)
+        print(self.get_ip(conn), ': ', data)
+        for i in self.get_clients():
+            i.send(data)
 
     def on_disconnect(self, conn):
-        print(self.client_info(conn), 'Disconnected')
+        print(self.get_ip(conn), 'Disconnected')
 
     def on_abnormal_disconnect(self, conn, msg):
         print('Abnormal disconnect: ', msg)
@@ -61,8 +63,8 @@ The above example shows the simplest way to start a server. For the more advance
 ```python
 s = Socket(port=1234,
            host=socket.gethostbyname(socket.gethostname()),
-           queue_size=100,
-           epoll_block_time=10)
+           queue_size=1000,
+           epoll_block_time=2)
 ```
 
 * port - The server port
@@ -83,6 +85,45 @@ The "on" functions can be setup so that the server calls them within a new subth
 ```python
 s.run_in_subthread(s.on_recv, True)
 ```
+## Receiving messages
+Although there is a built in function to receive messages that calls the on_recv function, users are encurraged to write a custom recv function to handle incomming messages
+The built in function looks like this
+
+```python
+def recv(self, conn):
+    try:
+        data = conn.recv(self.default_recv_buffsize)
+    except socket.error:
+        self.disconnect(conn, False, 
+                        'Error while receiving data from {}'.format(self.get_ip(conn)))
+    else:
+        if data == b'':
+            self.disconnect(conn)
+        else:
+            self.register(conn)
+            self._call_on_function(self.on_recv, (conn, data))
+```
+Whithin the recv function users are expected to take data from the recv buffer using the socket objects conn.recv(bytes) function. If more data is expected from the client in question when done receiving call the self.register(conn) function to continue listening for incoming messages.
+
+## Disconnecting
+
+```python
+def disconnect(self, conn, normal=True, msg=''):
+    if self._client_info[conn].is_registered:
+        self.unregister(conn)
+    try:
+        conn.shutdown(socket.SHUT_RDWR)
+    except socket.error:
+        pass
+    conn.close()
+    if normal:
+        self._call_on_function(self.on_disconnect, (conn, ))
+    else:
+        self._call_on_function(self.on_abnormal_disconnect, (conn, msg))
+    del self._client_info[conn]
+
+```
+
 
 ## Planned releases
 - EWebsocketS - A Websocket server based on ESocketS and the RFC6455 websocket protocol
