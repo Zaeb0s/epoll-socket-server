@@ -4,7 +4,7 @@ from distutils.core import setup
 setup(
   name = 'ESocketS',
   packages = ['ESocketS'], # this must be the same as the name above
-  version = '0.2.0',
+  version = '0.3.0',
   license = 'MIT',
   description = 'A socket server using select.epoll',
   author = 'Christoffer Zakrisson',

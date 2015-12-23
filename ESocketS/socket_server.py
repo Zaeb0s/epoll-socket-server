@@ -9,13 +9,30 @@ class _ClientInfo:
     is_registered = False
     data_in_recv_buffer = False
     _send_queue = queue.Queue()
-
+    recv_function = None
     def __init__(self, address):
         self.address = address
 
+def serve_foever(f):
+    def wrapper(*args):
+        self = args[0]
+        try:
+            while self.__serve:
+                f(*args)
+        finally:
+            if self.__serve:
+                # An error made the server shut down
+                self.__serve = False
+            elif self._no_serve_alive() == 1:
+                # This is the last thread to be closed
+                self.on_stop()
+                self.__shutdown_wait.set()
+
+
+
+
 
 class Socket:
-
     default_recv_buffsize = 4096
     started = False
 
@@ -64,7 +81,7 @@ class Socket:
                 for key, mask in events:
                     self.unregister(key.fileobj)
                     self._client_info[key.fileobj].data_in_recv_buffer = True
-                    self.recv(key.fileobj)
+                    self._client_info[key.fileobj].recv_function(key.fileobj)
         finally:
             if self._no_serve_alive() == 1:
                 self.__shutdown_wait.set()
@@ -94,8 +111,9 @@ class Socket:
             else:
                 client[0].setblocking(False)
                 self._client_info[client[0]] = _ClientInfo(client[1])
-                self.register(client[0])
+                self._client_info[client[0]].recv_function = self.default_recv_function
                 self._call_on_function(self.on_connect, (client[0], ))
+                self.register(client[0])
         else:
             if self._no_serve_alive() == 1:
                 self.__shutdown_wait.set()
@@ -163,6 +181,16 @@ class Socket:
         self.__server_socket.close()
         self._call_on_function(self.on_stop, ())
 
+    def running(self, option=None):
+        if option is None:
+            return self.__serve
+        elif not option:
+            self.__serve = False
+            return False
+        else:
+            raise ValueError('Not a recognized parameter')
+
+
     def disconnect(self, conn, normal=True, msg=''):
         if self.client_info(conn).is_registered:
             self.unregister(conn)
@@ -177,26 +205,6 @@ class Socket:
             self._call_on_function(self.on_abnormal_disconnect, (conn, msg))
         del self._client_info[conn]
 
-    def _flush_send(self, conn, queue):
-        # queue = self._client_info[conn]._send_queue
-        while not queue.empty():
-            data_to_send = queue.get(timeout=0)
-            total_sent = 0
-            while total_sent < len(data_to_send):
-                sent = conn.send(data_to_send[total_sent:])
-                if sent == 0:
-                    self.disconnect(conn, False,
-                                    'Could not send bytes to {}'.format(self.get_ip(conn)))
-
-                    # if self._client_info[conn].is_registered:
-                    #     self.unregister(conn)
-                    # self._call_on_function(self.on_abnormal_disconnect, (conn,  ))
-                    return total_sent
-                else:
-                    total_sent += sent
-        else:
-            self._client_info[conn].is_sending = False
-
     def send(self, conn, data):
         """
         The send function is coded so that the user can call the send function
@@ -206,33 +214,50 @@ class Socket:
         thread.
         Unregisters the user and calls on_abnormal_disconnect if connection broken
         """
-        self._client_info[conn]._send_queue.put(data)
-        if not self._client_info[conn].is_sending:
-            # If not currently sending startup new thread to flush the send queue
-            self._client_info[conn].is_sending = True
-            threading.Thread(target=self._flush_send,
-                             args=(conn, self._client_info[conn]._send_queue)).start()
-            #self._flush_send(conn)
+        CI = self._client_info[conn]
+        if CI.is_sending:
+            CI._send_queue.put(data)
+        else:
+            CI.is_sending = True
+            while not CI._send_queue.empty():
+                data_to_send = CI._send_queue.get(timeout=0)
+                self.send_basic(conn, data_to_send)
+            else:
+                CI.is_sending = False
 
-    def recv(self, conn):
+    @staticmethod
+    def recv_basic(conn, size):
+        data = conn.recv(size)
+        if data == b'':
+            raise BrokenConnection('Received empty bytes array')
+        return data
+
+    @staticmethod
+    def send_basic(conn, data):
+        to_send, total_sent = len(data), 0
+        while total_sent < to_send:
+            sent = conn.send(data[total_sent:])
+            if sent == 0:
+                raise BrokenConnection('Sent empty array')
+
+
+    def default_recv_function(self, conn):
         try:
-            data = conn.recv(self.default_recv_buffsize)
+            data = self.recv_basic(conn, self.default_recv_buffsize)
         except socket.error:
             self.disconnect(conn, False,
                             'Error while receiving data from {}'.format(self.get_ip(conn)))
+        except BrokenConnection:
+            self.disconnect(conn)
         else:
-            if data == b'':
-                self.disconnect(conn)
-            else:
-                self.register(conn)
-                self._call_on_function(self.on_recv, (conn, data))
+            self.register(conn)
+            self._call_on_function(self.on_recv, (conn, data))
     
     def client_info(self, conn):
         return self._client_info[conn]
 
-    @staticmethod
-    def get_ip(conn):
-        return conn.getpeername()
+    def get_ip(self, conn):
+        return self._client_info[conn].address
 
     def get_clients(self):
         """
@@ -290,3 +315,7 @@ class Socket:
         pass
 
     # --------------------------------------------------------------------------------
+
+
+class BrokenConnection(Exception):
+    pass
