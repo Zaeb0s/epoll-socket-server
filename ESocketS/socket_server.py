@@ -3,61 +3,44 @@ import socket
 import threading
 import selectors
 import queue
+import errno
+from ESocketS.exceptions import *
+
 
 class _ClientInfo:
-    is_sending = False
-    is_registered = False
-    data_in_recv_buffer = False
-    _send_queue = queue.Queue()
-    recv_function = None
-    def __init__(self, address):
+    send_lock = threading.Lock()
+
+    def __init__(self, address, callback_function, callback_args):
         self.address = address
-
-def serve_foever(f):
-    def wrapper(*args):
-        self = args[0]
-        try:
-            while self.__serve:
-                f(*args)
-        finally:
-            if self.__serve:
-                # An error made the server shut down
-                self.__serve = False
-            elif self._no_serve_alive() == 1:
-                # This is the last thread to be closed
-                self.on_stop()
-                self.__shutdown_wait.set()
-
-
-
+        self.callback_function = callback_function
+        self.callback_args = callback_args
 
 
 class Socket:
-    default_recv_buffsize = 4096
-    started = False
+    clients = {}
 
-    __server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    __server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    __server_socket.setblocking(False)
+    _started = False
+    _stop_signal = False
 
-    _sel = selectors.EpollSelector()
+    _server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    _server_socket.setblocking(False)
 
-    __serve = False
-    __shutdown_wait = threading.Event()
-
-    _client_info = {}  # {conn:info_class}
     _accept_queue = queue.Queue()
+
 
     def __init__(self,
                  port=1234,
                  host=socket.gethostbyname(socket.gethostname()),
                  queue_size=1000,
-                 epoll_block_time=2):
+                 block_time=2,
+                 selector=selectors.EpollSelector()):
 
         self.host = host
         self.port = port
         self.queue_size = queue_size
-        self.epoll_block_time = epoll_block_time
+        self.block_time = block_time
+        self._epoll = selector
 
         self._run_in_subthread = {self.on_recv.__name__: False,
                                   self.on_connect.__name__: False,
@@ -65,238 +48,241 @@ class Socket:
                                   self.on_abnormal_disconnect.__name__: False,
                                   self.on_start.__name__: False,
                                   self.on_stop.__name__: False,
-                                  self.on_warning.__name__: False}
+                                  self.on_warning.__name__: False,
+                                  'client_callback': True}
 
-        self._serve_threads = {'_recv' :
-                                   threading.Thread(target=self._recv),
-                               '_accept' :
-                                   threading.Thread(target=self._accept),
-                               '_handle_connects' :
-                                   threading.Thread(target=self._handle_connects)}
+        self._serve_threads = {'_recv': threading.Thread(target=self._recv),
+                               '_accept': threading.Thread(target=self._accept),
+                               '_handle_connects': threading.Thread(target=self._handle_connects)}
 
+        self._stop_events = {'_recv': threading.Event(),
+                             '_accept': threading.Event(),
+                             '_handle_connects': threading.Event()}
+
+    # ------------ private functions --------------
     def _recv(self):
         try:
-            while self.__serve:
-                events = self._sel.select(self.epoll_block_time)
+            while not self._stop_signal:
+                events = self._epoll.select(self.block_time)
                 for key, mask in events:
                     self.unregister(key.fileobj)
-                    self._client_info[key.fileobj].data_in_recv_buffer = True
-                    self._client_info[key.fileobj].recv_function(key.fileobj)
+                    if self._run_in_subthread['client_callback']:
+                        threading.Thread(target=key.data[0],
+                                         args=key.data[1]).start()
+                    else:
+                        key.data[0](*key.data[1])
+
         finally:
-            if self._no_serve_alive() == 1:
-                self.__shutdown_wait.set()
+            self._stop_events['_recv'].set()
+            if not self._stop_signal:
+                # Error occurred
+                self.stop('Error in _recv')
 
     def _accept(self):
         server_epoll = selectors.EpollSelector()
-        server_epoll.register(self.__server_socket, selectors.EVENT_READ)
+        server_epoll.register(self._server_socket, selectors.EVENT_READ)
         try:
-            while self.__serve:
-                server_epoll.select(self.epoll_block_time)
+            while not self._stop_signal:
+                server_epoll.select(self.block_time)
                 try:
-                    conn, address = self.__server_socket.accept()
+                    conn, address = self._server_socket.accept()
                     self._accept_queue.put((conn, address))
 
                 except BlockingIOError:
                     pass
         finally:
-            if self._no_serve_alive() == 1:
-                self.__shutdown_wait.set()
+            self._stop_events['_accept'].set()
+            if not self._stop_signal:
+                # Error occured
+                self.stop('Error in _accept')
 
     def _handle_connects(self):
-        while self.__serve:
-            try:
-                client = self._accept_queue.get(timeout=self.epoll_block_time)
-            except queue.Empty:
-                pass
+        try:
+            while not self._stop_signal:
+                try:
+                    conn, address = self._accept_queue.get(timeout=self.block_time)
+                except queue.Empty:
+                    pass
+                else:
+                    conn.setblocking(False)
+
+                    client = _ClientInfo(address, self.recv, (conn, ))
+
+                    self.clients[conn] = client
+                    self._call_on_function(self.on_connect, (conn, ))
+
+        finally:
+            self._stop_events['_handle_connects'].set()
+            if not self._stop_signal:
+                # Error occured
+                self.stop('Error in _handle_connects')
+
+    # ---------------------------------------------
+
+    # -------------- user interface ---------------
+    # These functions need to have good error handling
+    # Throwing errors where nessesary
+
+    # send_raw - send function that detects broken connection
+    # recv_raw - recv function that detects broken connection
+    # get_ip
+    # unregister
+    # register
+    # start
+    # stop
+    # disconnect
+
+    def send_raw(self, conn, data, block=True):
+        client = self.clients[conn]
+
+        if block:
+            client.send_lock.acquire()
+        try:
+            to_send, total_sent = len(data), 0
+            while total_sent < to_send:
+                sent = conn.send(data[total_sent:])
+                if sent == 0:
+                    raise ClientAbnormalDisconnect('Sent empty array')
+                total_sent += sent
+        finally:
+            if block:
+                client.send_lock.release()
+
+    @staticmethod
+    def recv_raw(conn, size=4096):
+        try:
+            data = conn.recv(size)
+        except socket.error as e:
+            err = e.args[0]
+            if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+                # No data in recv buffer
+                raise WouldBlock('Tried to read client socket but no data was available')
             else:
-                client[0].setblocking(False)
-                self._client_info[client[0]] = _ClientInfo(client[1])
-                self._client_info[client[0]].recv_function = self.default_recv_function
-                self._call_on_function(self.on_connect, (client[0], ))
-                self.register(client[0])
+                # a "real" error occurred
+                raise ClientAbnormalDisconnect('socket.error while receiving: {}'.format(e))
         else:
-            if self._no_serve_alive() == 1:
-                self.__shutdown_wait.set()
+            if data == b'':
+                raise ClientDisconnect('Received empty bytes array')
+            return data
 
-    def register(self, conn):
+    def register(self, conn, silent=False):
+        client = self.clients[conn]
         try:
-            self._sel.register(conn, selectors.EVENT_READ)
+            self._epoll.register(conn, selectors.EVENT_READ,
+                                 (client.callback_function, client.callback_args))
         except KeyError:
-            # Client is already registered
-            self._call_on_function(self.on_warning,
-                                   ('Tried to register a client that is already registered:'
-                                    ' {}'.format(self._client_info[conn].address),))
-        finally:
-            self._client_info[conn].is_registered = True
-            self._client_info[conn].data_in_recv_buffer = False
+            if not silent:
+                raise KeyError('Client already registered')
 
-    def unregister(self, conn):
+    def unregister(self, conn, silent=False):
         try:
-            self._sel.unregister(conn)
+            self._epoll.unregister(conn)
         except KeyError:
-            # Conn is already not registered
-            self._call_on_function(self.on_warning,
-                                   ('Tried to unregister a client that is already unregistered:'
-                                   ' {}'.format(self._client_info[conn].address),))
-        finally:
-            self._client_info[conn].is_registered = False
+            if not silent:
+                raise KeyError('Client not registered')
 
     def start(self):
-        if self.started:
+        if self._started:
             raise OSError('Server can only be started once')
-        self.__serve = True
-        self.started = True
-        self.__server_socket.bind((self.host, self.port))
-        self.__server_socket.listen(self.queue_size)
+        self._started = True
+        self._server_socket.bind((self.host, self.port))
+        self._server_socket.listen(self.queue_size)
 
         for thread in self._serve_threads.values():
             thread.start()
 
         self._call_on_function(self.on_start, ())
 
-    def _no_serve_alive(self):
-        """
-        Determines how many of the main serve threads are alive
-        """
-        no_alive = 0
-        for thread in self._serve_threads.values():
-            if thread.isAlive():
-                no_alive += 1
-        return no_alive
-
-    def stop(self):
-
-        if not self.started:
+    def stop(self, reason=''):
+        if not self._started:
             raise OSError("Can't stop server because it has not been started yet")
-        self.__serve = False
+        self._stop_signal = True
+
+        self.disconnect('all', silent=True)
 
         # Waiting for the serve forever threads to stop
-        self.__shutdown_wait.wait()
+        for event in self._stop_events.values():
+            event.wait()
 
-        # Disconnecting all users within the selector
-        while len(self._sel._fd_to_key) != 0:
-            self.disconnect(list(self._sel._fd_to_key.values())[0].fileobj)
+        self._server_socket.shutdown(0)
+        self._server_socket.close()
+        self._call_on_function(self.on_stop, (reason,))
 
-        self.__server_socket.shutdown(0)
-        self.__server_socket.close()
-        self._call_on_function(self.on_stop, ())
-
-    def running(self, option=None):
-        if option is None:
-            return self.__serve
-        elif not option:
-            self.__serve = False
-            return False
+    def disconnect(self, conn, normal=True, msg='', silent=False):
+        if conn == 'all':
+            clients = self.clients.keys()
         else:
-            raise ValueError('Not a recognized parameter')
+            clients = [conn]
 
+        for client in clients:
+            self.unregister(client, silent=True)
+            try:
+                client.shutdown(socket.SHUT_RDWR)
+            except socket.error:
+                pass
+            client.close()
+            if normal and not silent:
+                self._call_on_function(self.on_disconnect, (client, ))
+            elif not silent:
+                self._call_on_function(self.on_abnormal_disconnect, (client, msg))
 
-    def disconnect(self, conn, normal=True, msg=''):
-        if self.client_info(conn).is_registered:
-            self.unregister(conn)
-        try:
-            conn.shutdown(socket.SHUT_RDWR)
-        except socket.error:
-            pass
-        conn.close()
-        if normal:
-            self._call_on_function(self.on_disconnect, (conn, ))
+        if conn == 'all':
+            self.clients.clear()
         else:
-            self._call_on_function(self.on_abnormal_disconnect, (conn, msg))
-        del self._client_info[conn]
+            del self.clients[conn]
 
-    def send(self, conn, data):
-        """
-        The send function is coded so that the user can call the send function
-        from several different threads at the same time but in order for data not
-        to be scrambled only one thread at a time per user is actually sending
-        the data the rest is putting the data into a Queue object for the send
-        thread.
-        Unregisters the user and calls on_abnormal_disconnect if connection broken
-        """
-        CI = self._client_info[conn]
-        if CI.is_sending:
-            CI._send_queue.put(data)
+    def run_in_subthread(self, function, yes_no):
+        if hasattr(function, __name__) and function.__name__ in self._run_in_subthread:
+            key = function.__name__
+        elif type(function) == str and (function in self._run_in_subthread or function == 'all'):
+            key = function
         else:
-            CI.is_sending = True
-            while not CI._send_queue.empty():
-                data_to_send = CI._send_queue.get(timeout=0)
-                self.send_basic(conn, data_to_send)
-            else:
-                CI.is_sending = False
+            raise ValueError('The function is not a valid option')
 
-    @staticmethod
-    def recv_basic(conn, size):
-        data = conn.recv(size)
-        if data == b'':
-            raise BrokenConnection('Received empty bytes array')
-        return data
-
-    @staticmethod
-    def send_basic(conn, data):
-        to_send, total_sent = len(data), 0
-        while total_sent < to_send:
-            sent = conn.send(data[total_sent:])
-            if sent == 0:
-                raise BrokenConnection('Sent empty array')
-
-
-    def default_recv_function(self, conn):
-        try:
-            data = self.recv_basic(conn, self.default_recv_buffsize)
-        except socket.error:
-            self.disconnect(conn, False,
-                            'Error while receiving data from {}'.format(self.get_ip(conn)))
-        except BrokenConnection:
-            self.disconnect(conn)
+        if yes_no:
+            choice = True
         else:
-            self.register(conn)
-            self._call_on_function(self.on_recv, (conn, data))
-    
-    def client_info(self, conn):
-        return self._client_info[conn]
+            choice = False
+
+        if key == 'all':
+            for i in self._run_in_subthread:
+                self._run_in_subthread[i] = choice
+        else:
+            self._run_in_subthread[key] = choice
 
     def get_ip(self, conn):
-        return self._client_info[conn].address
+        return self.clients[conn].address
+
+    def recv(self, conn, size=4096):
+        try:
+            data = self.recv_raw(conn, size)
+        except ClientDisconnect:
+            self._call_on_function(self.on_disconnect, (conn,))
+        except ClientAbnormalDisconnect as err:
+            self._call_on_function(self.on_abnormal_disconnect, (conn, err[0]))
+        else:
+            self._call_on_function(self.on_recv, (conn, data))
+            return data
 
     def get_clients(self):
         """
         Returns a generator object containing all clients
         """
-        return (i for i in self._client_info)
+        return (i for i in self.clients)
 
-    def run_in_subthread(self, on_function, yes_no):
-        """
-        Gives the ability to change the _run_in_subthread private variable in an easy way
-        if on_functions = 'all' all on_functions are modified
-        """
-        if yes_no:
-            change = True
-        else:
-            change = False
-        if hasattr(on_function, '__name__'):
-            name = on_function.__name__
-            if name in self._run_in_subthread:
-                self._run_in_subthread[on_function.__name__] = change
-                return
-        elif on_function == 'all':
-            for i in self._run_in_subthread:
-                self._run_in_subthread[i] = change
-            return
+    # ---------------------------------------------
 
-        raise ValueError('on_function needs to be one of the ESocketS.Socket() "on" functions')
-
+    # ---------------------------- the "on" functions --------------------------------
     def _call_on_function(self, on_function, args):
         if self._run_in_subthread[on_function.__name__]:
             threading.Thread(target=on_function, args=args).start()
         else:
             on_function(*args)
 
-    # ---------------------------- the "on" functions --------------------------------
     def on_start(self):
         pass
 
-    def on_stop(self):
+    def on_stop(self, reason):
         pass
 
     def on_recv(self, conn, data):
@@ -313,9 +299,6 @@ class Socket:
 
     def on_warning(self, msg):
         pass
-
     # --------------------------------------------------------------------------------
 
 
-class BrokenConnection(Exception):
-    pass
