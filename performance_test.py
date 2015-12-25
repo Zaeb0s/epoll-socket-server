@@ -4,11 +4,13 @@ import threading
 from time import sleep
 import time
 import ESocketS
+import selectors
+
 
 host = socket.gethostbyname(socket.gethostname())
 port = 1234
 
-server = ESocketS.Socket()
+server = ESocketS.Socket(selector=selectors.PollSelector())
 server.run_in_subthread('all', True)
 server.start()
 

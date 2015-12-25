@@ -2,7 +2,7 @@
 ESocketS is a python 3 socket.socket server. There are many socket.socket python modules out there, I choose to write this because I failed to find one that met my requirements and at the same time was easy enough to understand. ESocketS uses non-blocking sockets with select.epoll() to check for read/write/error socket changes.
 
 ## When to use ESocketS?
-EsocketS is written for one purpose above all, servers that need to support a high client count. An ESocketS server client count is restricted by the amount of file descriptors availible on the system.
+ESocketS is written for one purpose above all, servers that need to support a high client count. An ESocketS server client count is restricted by the amount of file descriptors availible on the system.
 
 ## Important notes about changes
 * 2015-12-15: Changed the name of some of the "on" functions.
