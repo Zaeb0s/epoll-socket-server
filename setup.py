@@ -4,7 +4,7 @@ from setuptools import setup
 from ESocketS import __version__
 import sys
 
-
+print('Current version: ', __version__)
 version = __version__.split('.')
 
 
@@ -42,4 +42,5 @@ setup(
                    'License :: OSI Approved :: MIT License'],
 )
 
-print('Installed ESocketS version: ' + version)
+
+print('Installed version: ' + version)
