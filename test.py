@@ -19,7 +19,7 @@ root.addHandler(ch)
 class EchoServer(ESocketS.SocketServer):
 
     def handle_incoming(self, client, address):
-        return False
+        return True
 
     def handle_readable(self, client):
         data = client.recv(1028)
@@ -27,7 +27,6 @@ class EchoServer(ESocketS.SocketServer):
             return False
 
         print(self.clients[client], data)
-        self.register(client)
         client.sendall(b'SERVER: ' + data)
         return True
 

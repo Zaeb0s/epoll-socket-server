@@ -4,26 +4,57 @@ import queue
 import socket
 import loopfunction
 import logging
-import traceback
 
-class SocketServer:
+def indent_string(str, size):
+    return (' '*size).join(str.splitlines(True))
 
-    def log(f):
-        def wrapper(*args, **kwargs):
-            logging.info('function {} called'.format(f.__name__))
+
+class log:
+    indentation = 4
+    def __init__(self, *args_):
+        self.do = {'errors': False,
+                   'enter': False,
+                   'exit': False,
+                   'args': False}
+
+        for i in args_:
+            if i not in self.do and i != 'all':
+                print('ERROR:' + i)
+                raise ValueError('{} is not a valid variable'.format(i))
+
+        for i in self.do.keys():
+            if i in args_ or 'all' in args_:
+                self.do[i] = True
+
+    def __call__(self, f):
+        def wrapped_f(*args, **kwargs):
+            # print(args)
+            if self.do['enter']:
+                logging.info(indent_string(
+                             'function {} called with\n'.format(f.__name__) +
+                             'args={}\n'.format(args) +
+                             'kwargs={}'.format(kwargs), self.indentation))
             try:
                 f(*args, **kwargs)
             except:
-                logging.error('function {} exited with error:\n'.format(f.__name__) +
-                              '-'*50 + '\n' +
-                              traceback.format_exc() +
-                              '-'*50 + '\n')
+                if self.do['errors']:
+                    logging.error(indent_string(
+                                  'function {} was called with\n'.format(f.__name__) +
+                                  'args={}\n'.format(args) +
+                                  'kwargs={}\n'.format(kwargs) +
+                                  'and exited with error:\n' +
+                                  '-'*50 + '\n' +
+                                  logging.traceback.format_exc() +
+                                  '-'*50 + '\n', self.indentation))
                 raise
             else:
-                logging.info('function {} exited normally'.format(f.__name__))
-        return wrapper
+                if self.do['exit']:
+                    logging.info('function {} exited normally'.format(f.__name__))
+        return wrapped_f
 
-    @log
+class SocketServer:
+
+    @log('all')
     def __init__(self,
                  port=1234,
                  host=socket.gethostbyname(socket.gethostname()),
@@ -64,6 +95,7 @@ class SocketServer:
 
         self.clients = {}
 
+    @log('errors')
     def _search_incoming(self):
         if self._accept_selector.select(timeout=self.block_time):
             try:
@@ -73,6 +105,7 @@ class SocketServer:
             except socket.error:
                 pass
 
+    @log('errors')
     def _search_readable(self):
         events = self._recv_selector.select(self.block_time)
         for key, mask in events:
@@ -80,6 +113,7 @@ class SocketServer:
                 self._recv_selector.unregister(key.fileobj)
                 self._recv_queue.put(key.fileobj)
 
+    @log('errors')
     def _handle_incoming(self):
         try:
             client, address = self._accept_queue.get(timeout=self.block_time)
@@ -94,6 +128,7 @@ class SocketServer:
         except queue.Empty:
             pass
 
+    @log('errors')
     def _handle_readable(self):
         try:
             client = self._recv_queue.get(timeout=self.block_time)
@@ -104,15 +139,17 @@ class SocketServer:
         except queue.Empty:
             pass
 
+    @log('errors')
     def handle_incoming(self, client, address):
         return True
 
+    @log('errors')
     def handle_readable(self, client):
         return True
 
 
 
-    @log
+    @log('all')
     def start(self):
         logging.info('Binding server socket to {}:{}'.format(self.host, self.port))
         self._server_socket.bind((self.host, self.port))
@@ -131,7 +168,7 @@ class SocketServer:
         logging.info('Now handling readable client sockets')
         logging.info('Main threads started')
 
-    @log
+    @log('all')
     def stop(self):
         logging.info('Closing all ({}) connections...'.format(len(self.clients)))
 
@@ -141,14 +178,15 @@ class SocketServer:
         self._server2.send_stop_signal()
         self._server3.send_stop_signal()
         self._server4.send_stop_signal()
-        self._server1.stop()
-        self._server2.stop()
-        self._server3.stop()
-        self._server4.stop()
+        self._server1.stop(silent=True)
+        self._server2.stop(silent=True)
+        self._server3.stop(silent=True)
+        self._server4.stop(silent=True)
         logging.info('Closing server socket...')
         self._server_socket.shutdown(socket.SHUT_RDWR)
         self._server_socket.close()
 
+    @log('errors')
     def register(self, client, silent=False):
         try:
             self._recv_selector.register(client, selectors.EVENT_READ)
@@ -158,6 +196,7 @@ class SocketServer:
                     'Tried to register an already registered client: {}'.format(self.clients[client]))
                 raise KeyError('Client already registered')
 
+    @log('errors')
     def unregister(self, client, silent=False):
         try:
             self._recv_selector.unregister(client)
@@ -167,6 +206,7 @@ class SocketServer:
                     'Tried to unregister a client that is not registered: {}'.format(self.clients[client]))
                 raise KeyError('Client already registered')
 
+    @log('errors')
     def disconnect(self, client, how=socket.SHUT_RDWR):
         if hasattr(client, '__iter__'):
             if client == self.clients:
