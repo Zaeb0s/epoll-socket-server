@@ -11,6 +11,7 @@ def indent_string(str, size):
 
 class log:
     indentation = 4
+
     def __init__(self, *args_):
         self.do = {'errors': False,
                    'enter': False,
@@ -52,6 +53,7 @@ class log:
                     logging.info('function {} exited normally'.format(f.__name__))
         return wrapped_f
 
+
 class SocketServer:
 
     @log('all')
@@ -59,7 +61,7 @@ class SocketServer:
                  port=1234,
                  host=socket.gethostbyname(socket.gethostname()),
                  queue_size=1000,
-                 block_time=10,
+                 block_time=2,
                  selector=selectors.EpollSelector):
 
         self.port = port
@@ -80,18 +82,23 @@ class SocketServer:
 
         self._accept_selector.register(self._server_socket, selectors.EVENT_READ)
 
-        self._server1 = loopfunction.Loop(target=self._search_incoming,
-                                          on_stop=lambda:
-                                          logging.info('search for incoming clients thread stopped'))
-        self._server2 = loopfunction.Loop(target=self._search_readable,
-                                          on_stop=lambda:
-                                          logging.info('search for readable client sockets thread stopped'))
-        self._server3 = loopfunction.Loop(target=self._handle_incoming,
-                                          on_stop=lambda:
-                                          logging.info('handle incoming clients thread stopped'))
-        self._server4 = loopfunction.Loop(target=self._handle_readable,
-                                          on_stop=lambda:
-                                          logging.info('handle readable client sockets thread stopped'))
+        self._loop_functions = (
+            loopfunction.Loop(target=self._search_incoming,
+                              on_start=lambda: logging.info('Now searching for incoming client connections'),
+                              on_stop=lambda: logging.info('search for incoming clients thread stopped')),
+
+            loopfunction.Loop(target=self._search_readable,
+                              on_start=lambda: logging.info('Now searching for readable client sockets'),
+                              on_stop=lambda: logging.info('search for readable client sockets thread stopped')),
+
+            loopfunction.Loop(target=self._handle_incoming,
+                              on_start=lambda: logging.info('Now handling incoming client connections'),
+                              on_stop=lambda: logging.info('handle incoming clients thread stopped')),
+
+            loopfunction.Loop(target=self._handle_readable,
+                              on_start=lambda: logging.info('Now handling incoming client connections'),
+                              on_stop=lambda: logging.info('handle readable client sockets thread stopped'))
+        )
 
         self.clients = {}
 
@@ -158,14 +165,9 @@ class SocketServer:
         logging.info('Server socket now listening (queue_size={})'.format(self.queue_size))
 
         logging.info('Starting main threads...')
-        self._server1.start(subthread=True)
-        logging.info('Now searching for incoming client connections')
-        self._server2.start(subthread=True)
-        logging.info('Now searching for readable client sockets')
-        self._server3.start(subthread=True)
-        logging.info('Now handling incoming client connections')
-        self._server4.start(subthread=True)
-        logging.info('Now handling readable client sockets')
+        for loop_obj in self._loop_functions:
+            loop_obj.start()
+
         logging.info('Main threads started')
 
     @log('all')
@@ -174,16 +176,15 @@ class SocketServer:
 
         self.disconnect(self.clients)
         logging.info('Stopping mainthreads...')
-        self._server1.send_stop_signal()
-        self._server2.send_stop_signal()
-        self._server3.send_stop_signal()
-        self._server4.send_stop_signal()
-        self._server1.stop(silent=True)
-        self._server2.stop(silent=True)
-        self._server3.stop(silent=True)
-        self._server4.stop(silent=True)
-        logging.info('Closing server socket...')
+        for loop_obj in self._loop_functions:
+            loop_obj.send_stop_signal()
+
+        for loop_obj in self._loop_functions:
+            loop_obj.stop(silent=True)
+
+        logging.info('Shutting down server socket...')
         self._server_socket.shutdown(socket.SHUT_RDWR)
+        logging.info('Closing server socket...')
         self._server_socket.close()
 
     @log('errors')
