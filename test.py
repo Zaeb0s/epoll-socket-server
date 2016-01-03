@@ -16,29 +16,29 @@ ch.setFormatter(formatter)
 root.addHandler(ch)
 
 
-class EchoServer(ESocketS.SocketServer):
+def handle_incoming(client, address):
+    return True
 
-    def handle_incoming(self, client, address):
-        return True
 
-    def handle_readable(self, client):
-        data = client.recv(1028)
-        if data == b'':
-            return False
+def handle_readable(client):
+    data = client.recv(1028)
+    if data == b'':
+        return False
 
-        print(self.clients[client], data)
-        client.sendall(b'SERVER: ' + data)
-        return True
+    for i in server.clients:
+        i.sendall('{}: {}'.format(server.clients[i], data).encode() + b'\n')
+    print(server.clients[client], data)
+    return True
 
-s = EchoServer()
-# s.start()
+server = ESocketS.SocketServer(handle_incoming=handle_incoming,
+                               handle_readable=handle_readable)
 
-# clients = []
-# sent = 0
+
 
 class temp:
     clients = []
     sent = 0
+
 
 def connect_clients(no_clients):
     t1 = time.time()

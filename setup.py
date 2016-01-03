@@ -27,9 +27,9 @@ with open('ESocketS/version', 'w') as f:
     f.write(version)
 
 setup(
-    name = 'ESocketS',
-    packages = ['ESocketS'], # this must be the same as the name above
-    version = version,
+    name='ESocketS',
+    packages=['ESocketS'], # this must be the same as the name above
+    version =version,
     include_package_data=True,
     license = 'MIT',
     description = 'A socket server using select.epoll',

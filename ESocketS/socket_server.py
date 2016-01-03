@@ -30,7 +30,6 @@ class log:
 
     def __call__(self, f):
         def wrapped_f(*args, **kwargs):
-            # print(args)
             if self.do['enter']:
                 logging.info(indent_string(
                              'function {} called with\n'.format(f.__name__) +
@@ -63,13 +62,17 @@ class SocketServer:
                  host=socket.gethostbyname(socket.gethostname()),
                  queue_size=1000,
                  block_time=2,
-                 selector=selectors.EpollSelector):
+                 selector=selectors.EpollSelector,
+                 handle_readable=lambda: True,
+                 handle_incoming=lambda: True):
 
         self.port = port
         self.host = host
         self.queue_size = queue_size
         self.block_time = block_time
         self.selector = selector
+        self.handle_readable = handle_readable
+        self.handle_incoming = handle_incoming
 
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -146,13 +149,13 @@ class SocketServer:
         except queue.Empty:
             pass
 
-    @log('errors')
-    def handle_incoming(self, client, address):
-        return True
-
-    @log('errors')
-    def handle_readable(self, client):
-        return True
+    # @log('errors')
+    # def handle_incoming(self, client, address):
+    #     return True
+    #
+    # @log('errors')
+    # def handle_readable(self, client):
+    #     return True
 
     @log('all')
     def start(self):
@@ -173,7 +176,7 @@ class SocketServer:
         logging.info('Closing all ({}) connections...'.format(len(self.clients)))
 
         self.disconnect(self.clients)
-        logging.info('Stopping mainthreads...')
+        logging.info('Stopping main threads...')
         for loop_obj in self._loop_objects:
             loop_obj.send_stop_signal(silent=True)
 
