@@ -61,7 +61,7 @@ def send_from_all(message):
 def connect():
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    conn.connect((s.host, s.port))
+    conn.connect((server.host, server.port))
     conn.sendall(b'hej '*500)
     conn.shutdown(socket.SHUT_RDWR)
     conn.close()

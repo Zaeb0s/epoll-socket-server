@@ -10,8 +10,8 @@ def indent_string(string, indentation):
     return (' '*indentation).join(string.splitlines(True))
 
 
-class log:
-    indentation = 4
+class Log:
+    INDENTATION = 4
 
     def __init__(self, *args_):
         self.do = {'errors': False,
@@ -34,7 +34,7 @@ class log:
                 logging.info(indent_string(
                              'function {} called with\n'.format(f.__name__) +
                              'args={}\n'.format(args) +
-                             'kwargs={}'.format(kwargs), self.indentation))
+                             'kwargs={}'.format(kwargs), self.INDENTATION))
             try:
                 f(*args, **kwargs)
             except:
@@ -46,7 +46,7 @@ class log:
                                   'and exited with error:\n' +
                                   '-'*50 + '\n' +
                                   logging.traceback.format_exc() +
-                                  '-'*50 + '\n', self.indentation))
+                                  '-'*50 + '\n', self.INDENTATION))
                 raise
             else:
                 if self.do['exit']:
@@ -56,7 +56,7 @@ class log:
 
 class SocketServer:
 
-    @log('errors')
+    @Log('errors')
     def __init__(self,
                  port=1234,
                  host=socket.gethostbyname(socket.gethostname()),
@@ -105,26 +105,24 @@ class SocketServer:
         )
         self.clients = {}
 
-    @log('errors')
+    @Log('errors')
     def _accept_clients(self):
-        if self._accept_selector.select(timeout=self.block_time):
-            try:
+        """Accepts new clients and sends them to the _accept_queue to be handled by _handle_accepted
+        """
+        try:
+            if self._accept_selector.select(timeout=self.block_time):
                 client = self._server_socket.accept()
                 logging.info('Client connected: {}'.format(client[1]))
                 self._accept_queue.put(client)
-            except socket.error:
-                pass
+        except socket.error:
+            pass
 
-    @log('errors')
-    def _poll_readable(self):
-        events = self._recv_selector.select(self.block_time)
-        for key, mask in events:
-            if mask == selectors.EVENT_READ:
-                self._recv_selector.unregister(key.fileobj)
-                self._recv_queue.put(key.fileobj)
-
-    @log('errors')
+    @Log('errors')
     def _handle_accepted(self):
+        """Gets accepted clients from the queue object and sets up the client socket.
+        The client can then be found in the clients dictionary with the socket object
+        as the key.
+        """
         try:
             client, address = self._accept_queue.get(timeout=self.block_time)
             if self.handle_incoming(client, address):
@@ -138,8 +136,24 @@ class SocketServer:
         except queue.Empty:
             pass
 
-    @log('errors')
+    @Log('errors')
+    def _poll_readable(self):
+        """Searches for readable client sockets. These sockets are then put in a queue
+        to be handled by _handle_readable
+        """
+        events = self._recv_selector.select(self.block_time)
+        for key, mask in events:
+            if mask == selectors.EVENT_READ:
+                self._recv_selector.unregister(key.fileobj)
+                self._recv_queue.put(key.fileobj)
+
+    @Log('errors')
     def _handle_readable(self):
+        """Handles readable client sockets. Calls the user modified handle_readable with
+        the client socket as the only variable. If the handle_readable function returns
+        true the client is again registered to the selector object otherwise the client
+        is disconnected.
+        """
         try:
             client = self._recv_queue.get(timeout=self.block_time)
             if self.handle_readable(client):
@@ -149,15 +163,7 @@ class SocketServer:
         except queue.Empty:
             pass
 
-    # @log('errors')
-    # def handle_incoming(self, client, address):
-    #     return True
-    #
-    # @log('errors')
-    # def handle_readable(self, client):
-    #     return True
-
-    @log('all')
+    @Log('all')
     def start(self):
         logging.info('Binding server socket to {}:{}'.format(self.host, self.port))
         self._server_socket.bind((self.host, self.port))
@@ -171,7 +177,7 @@ class SocketServer:
 
         logging.info('Main threads started')
 
-    @log('all')
+    @Log('all')
     def stop(self):
         logging.info('Closing all ({}) connections...'.format(len(self.clients)))
 
@@ -188,7 +194,7 @@ class SocketServer:
         logging.info('Closing server socket...')
         self._server_socket.close()
 
-    @log('errors')
+    @Log('errors')
     def register(self, client, silent=False):
         try:
             self._recv_selector.register(client, selectors.EVENT_READ)
@@ -198,7 +204,7 @@ class SocketServer:
                     'Tried to register an already registered client: {}'.format(self.clients[client]))
                 raise KeyError('Client already registered')
 
-    @log('errors')
+    @Log('errors')
     def unregister(self, client, silent=False):
         try:
             self._recv_selector.unregister(client)
@@ -208,7 +214,7 @@ class SocketServer:
                     'Tried to unregister a client that is not registered: {}'.format(self.clients[client]))
                 raise KeyError('Client already registered')
 
-    @log('errors')
+    @Log('errors')
     def disconnect(self, client, how=socket.SHUT_RDWR):
         if hasattr(client, '__iter__'):
             if client == self.clients:
