@@ -15,6 +15,21 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 root.addHandler(ch)
 
+# def handle_incoming(client, address):
+#     client.sendall(b'SERVER: Connection accepted!\n')
+#     return True
+#
+# def handle_readable(client):
+#     data = client.recv(1028)
+#     if data == b'':
+#         return False
+#     client.sendall(b'SERVER: ' + data)
+#     return True
+#
+# server = ESocketS.SocketServer(handle_incoming=handle_incoming,
+#                                handle_readable=handle_readable)
+# server.start()
+# print('Server started on: {}:{}'.format(server.host, server.port))
 
 def handle_incoming(client, address):
     return True

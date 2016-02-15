@@ -1,9 +1,9 @@
 #!/bin/env python3
 import selectors
-import queue
 import socket
 import loopfunction
 import logging
+import threading
 
 
 def indent_string(string, indentation):
@@ -78,9 +78,6 @@ class SocketServer:
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_socket.setblocking(False)
 
-        self._accept_queue = queue.Queue()
-        self._recv_queue = queue.Queue()
-
         self._accept_selector = selector()
         self._recv_selector = selector()
 
@@ -94,74 +91,60 @@ class SocketServer:
             loopfunction.Loop(target=self._poll_readable,
                               on_start=lambda: logging.info('Thread started: Poll for readable clients'),
                               on_stop=lambda: logging.info('Thread stopped: Poll for readable clients')),
-
-            loopfunction.Loop(target=self._handle_accepted,
-                              on_start=lambda: logging.info('Thread started: Handle accepted clients'),
-                              on_stop=lambda: logging.info('Thread stopped: Handle accepted clients')),
-
-            loopfunction.Loop(target=self._handle_readable,
-                              on_start=lambda: logging.info('Thread started: Handle readable clients'),
-                              on_stop=lambda: logging.info('Thread stopped: Handle readable clients')),
         )
         self.clients = {}
 
     @Log('errors')
     def _accept_clients(self):
-        """Accepts new clients and sends them to the _accept_queue to be handled by _handle_accepted
+        """Accepts new clients and sends them to the to _handle_accepted within a subthread
         """
         try:
             if self._accept_selector.select(timeout=self.block_time):
                 client = self._server_socket.accept()
                 logging.info('Client connected: {}'.format(client[1]))
-                self._accept_queue.put(client)
+                threading.Thread(target=self._handle_accepted, args=(client,)).start()
         except socket.error:
             pass
 
     @Log('errors')
-    def _handle_accepted(self):
+    def _handle_accepted(self, client):
         """Gets accepted clients from the queue object and sets up the client socket.
         The client can then be found in the clients dictionary with the socket object
         as the key.
         """
-        try:
-            client, address = self._accept_queue.get(timeout=self.block_time)
-            if self.handle_incoming(client, address):
-                logging.info('Accepted connection from client: {}'.format(address))
-                client.setblocking(False)
-                self.clients[client] = address
-                self.register(client)
-            else:
-                logging.info('Refused connection from client: {}'.format(address))
-                self.disconnect(client)
-        except queue.Empty:
-            pass
+        conn, addr = client
+        if self.handle_incoming(conn, addr):
+            logging.info('Accepted connection from client: {}'.format(addr))
+            conn.setblocking(False)
+            self.clients[conn] = addr
+            self.register(conn)
+        else:
+            logging.info('Refused connection from client: {}'.format(addr))
+            self.disconnect(conn)
 
     @Log('errors')
     def _poll_readable(self):
-        """Searches for readable client sockets. These sockets are then put in a queue
+        """Searches for readable client sockets. These sockets are then put in a subthread
         to be handled by _handle_readable
         """
         events = self._recv_selector.select(self.block_time)
         for key, mask in events:
             if mask == selectors.EVENT_READ:
                 self._recv_selector.unregister(key.fileobj)
-                self._recv_queue.put(key.fileobj)
+                threading.Thread(target=self._handle_readable, args=(key.fileobj,)).start()
 
     @Log('errors')
-    def _handle_readable(self):
+    def _handle_readable(self, conn):
         """Handles readable client sockets. Calls the user modified handle_readable with
         the client socket as the only variable. If the handle_readable function returns
         true the client is again registered to the selector object otherwise the client
         is disconnected.
         """
-        try:
-            client = self._recv_queue.get(timeout=self.block_time)
-            if self.handle_readable(client):
-                self.register(client)
-            else:
-                self.disconnect(client)
-        except queue.Empty:
-            pass
+
+        if self.handle_readable(conn):
+            self.register(conn)
+        else:
+            self.disconnect(conn)
 
     @Log('all')
     def start(self):
