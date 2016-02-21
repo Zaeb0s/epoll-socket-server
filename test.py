@@ -5,8 +5,8 @@ import socket
 import time
 import logging
 import sys
-import matplotlib
-
+import matplotlib.pyplot as plt
+from time import sleep
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
 
@@ -23,69 +23,53 @@ def handle_incoming(client, address):
 
 def handle_readable(client):
     data = client.recv(1028)
+
+    # print(data)
     if data == b'':
         return False
-
-    # j = 0
-    # while j < len(server.clients):
-    #     i = list(server.clients)[j]
-    #     i.sendall('{}: {}'.format(server.clients[i], data).encode() + b'\n')
-    #     j += 1
-    # print(server.clients[client], data)
     return True
 
 server = ESocketS.SocketServer(handle_incoming=handle_incoming,
                                handle_readable=handle_readable,
-                               max_subthreads=-4)
-
-
-
-
-class temp:
-    clients = []
-    sent = 0
-
-
-def connect_clients(no_clients):
-    t1 = time.time()
-    for i in range(no_clients):
-        threading.Thread(target=connect).start()
-    # while len(temp.clients) != no_clients:
-    #     pass
-    return time.time() - t1
-
-
-def send_from_all(message):
-    temp.sent = 0
-    t1 = time.time()
-    for i in temp.clients:
-        threading.Thread(target=send, args=(i, message)).start()
-    while temp.sent != len(temp.clients):
-        pass
-    return time.time() - t1
-
-def connect():
-    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    conn.connect((server.host, server.port))
-    time.sleep(0.2)
-    # conn.sendall(b'hej \n')
-    # conn.shutdown(socket.SHUT_RDWR)
-    # conn.close()
-    temp.clients.append(conn)
-
-def send(client, msg):
-    client.sendall(msg)
-    temp.sent += 1
+                               max_subthreads=2)
 
 server.start()
-connect_clients(4000)
+sockets = []
+def connect(lock, n):
+    for i in range(n):
+        conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        conn.connect((server.host, server.port))
+        sockets.append(conn)
 
-import matplotlib.pyplot as plt
-def sample():
-    x = []
-    while threading.active_count() > 5:
-        x.append(threading.active_count())
-        plt.plot(x)
-        # plt.axis([0, 6, 0, 20])
-        plt.show()
+    lock.release()
+
+
+def send():
+    for s in sockets:
+        s.sendall(b'Hello from client!')
+
+def mass_send():
+    while True:
+        send()
+
+def sample(seconds, no_samples):
+    samples = []
+    time1 = time.time()
+    while time.time() - time1 < seconds:
+        t1 = time.time()
+        samples.append(threading.active_count())
+        t2 = time.time() - t1
+        sleep(seconds/no_samples - t2)
+    return samples
+
+conn_lock = threading.Lock()
+conn_lock.acquire()
+threading.Thread(target=connect, args=(conn_lock, 4000)).start()
+conn_lock.acquire()
+threading.Thread(target=mass_send).start()
+
+print('Sampling')
+samples = sample(5, 2000)
+plt.plot(samples)
+plt.show()

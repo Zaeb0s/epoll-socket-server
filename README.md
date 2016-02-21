@@ -1,5 +1,5 @@
 # esockets
-ESocketS is a python 3 socket.socket server. There are many socket.socket python modules out there, I choose to write this because I failed to find one that met my requirements and at the same time was easy enough to understand. ESocketS uses non-blocking sockets with select.epoll() to check for read/write/error socket changes.
+esockets is a python socket.socket server. There are many socket.socket python modules out there, I choose to write this because I failed to find one that met my requirements and at the same time was easy enough to understand. esockets uses non-blocking sockets with select.epoll() to check for read/write/error socket changes.
 
 ## When to use esockets?
 esockets is written for one purpose above all, servers that need to support a high client count. An esockets server client count is restricted by the amount of file descriptors availible on the system.
@@ -13,12 +13,12 @@ esockets is written for one purpose above all, servers that need to support a hi
 ## How to get started
 ### Installation
 ```sh
-pip install ESocketS
+pip install esockets
 ```
 ### Update
-At the moment (2015-12-14) this module is still new. As I try to integrate it into my other projects I usually find something to improve. So to get the latest version do
+At the moment (2016-02-14) this module is still new. As I try to integrate it into my other projects I usually find something to improve. So to get the latest version do
 ```sh
-pip install ESocketS --upgrade
+pip install esockets --upgrade
 ```
 See <https://github.com/Zaeb0s/epoll-socket-server> for the latest changes
 ### Basic setup
@@ -27,6 +27,8 @@ The user communicates with the ServerSocket class using two functions (handle_in
 The following is a simple example of an echo server
 
 ```python
+#!/bin/env python3
+import esockets
 def handle_incoming(client, address):
     """
     Return True: The client is accepted and the server starts polling for messages
@@ -48,10 +50,10 @@ def handle_readable(client):
     client.sendall(b'SERVER: ' + data)
     return True
 
-server = ESocketS.SocketServer(handle_incoming=handle_incoming,
+server = esockets.SocketServer(handle_incoming=handle_incoming,
                                handle_readable=handle_readable)
 server.start()
-print('Server started on: {}{}'.format((server.host, server.port))
+print('Server started on: {}:{}'.format(server.host, server.port))
 ```
 
 ### Customizable variables
@@ -65,7 +67,7 @@ host | The server host |  Using the socket modules socket.gethostbyname(socket.g
 queue_size | Max number of clients awaiting to be accepted | 1000
 block_time | Maximum block time within each selector and queue objects | 2
 selector | A selectors object to determine which type to use | selectors.EpollSelector
-
+max_subthreads | Maximum number of threads started in addition to the four mainthreads | -1 (Unlimited)
 Calling with all default values would then look like this
 
 ```python
@@ -75,7 +77,8 @@ server = esockets.SocketServer(  port=1234,
                                  block_time=2,
                                  selector=selectors.EpollSelector,
                                  handle_readable=lambda: True,
-                                 handle_incoming=lambda: True):
+                                 handle_incoming=lambda: True,
+                                 max_subthreads=-1):
 ```
 
 

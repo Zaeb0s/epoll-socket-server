@@ -3,13 +3,8 @@ import selectors
 import socket
 import loopfunction
 import logging
-import threading
 import queue
 import maxthreads
-from time import sleep
-
-def indent_string(string, indentation):
-    return (' '*indentation).join(string.splitlines(True))
 
 
 class Log:
@@ -33,7 +28,7 @@ class Log:
     def __call__(self, f):
         def wrapped_f(*args, **kwargs):
             if self.do['enter']:
-                logging.debug(indent_string(
+                logging.debug(self._indent_string(
                              'function {} called with\n'.format(f.__name__) +
                              'args={}\n'.format(args) +
                              'kwargs={}'.format(kwargs), self.INDENTATION))
@@ -41,7 +36,7 @@ class Log:
                 f(*args, **kwargs)
             except:
                 if self.do['errors']:
-                    logging.error(indent_string(
+                    logging.error(self._indent_string(
                                   'function {} was called with\n'.format(f.__name__) +
                                   'args={}\n'.format(args) +
                                   'kwargs={}\n'.format(kwargs) +
@@ -55,6 +50,9 @@ class Log:
                     logging.debug('function {} exited normally'.format(f.__name__))
         return wrapped_f
 
+    @staticmethod
+    def _indent_string(string, indentation):
+        return (' '*indentation).join(string.splitlines(True))
 
 class SocketServer:
 
@@ -94,16 +92,14 @@ class SocketServer:
             loopfunction.Loop(target=self._mainthread_poll_readable,
                               on_start=lambda: logging.debug('Thread started: Poll for readable clients'),
                               on_stop=lambda: logging.debug('Thread stopped: Poll for readable clients')),
+
+            loopfunction.Loop(target=self._mainthread_start_subfunctions,
+                              on_start=lambda: logging.debug('Thread started: Start sub-functions'),
+                              on_stop=lambda: logging.debug('Thread stopped: Start sub-functions'))
         )
-        self.max_subthreads = max_subthreads
-        if max_subthreads > 0:
-            self._loop_objects += (loopfunction.Loop(target=self._mainthread_start_subfunctions,
-                                   on_start=lambda: logging.debug('Thread started: Start sub-functions'
-                                                                  ' (maximum subthreads: {})'.format(max_subthreads)),
-                                   on_stop=lambda: logging.debug('Thread stopped: Start sub-functions')),)
-            self._maxSub = maxthreads.MaxThreads(max_subthreads)
-            self._sub_functions_queue = queue.Queue()
-            self._max_subthreads_lock = threading.BoundedSemaphore(max_subthreads)
+
+        self._threads_limiter = maxthreads.MaxThreads(max_subthreads)
+        self._events_queue = queue.Queue()
         self.clients = {}
 
     @Log('errors')
@@ -114,11 +110,8 @@ class SocketServer:
             if self._accept_selector.select(timeout=self.block_time):
                 client = self._server_socket.accept()
                 logging.info('Client connected: {}'.format(client[1]))
+                self._events_queue.put(client)
 
-                # self._start_subthread(target=self._subthread_handle_accepted, args=(client,))
-                self._start_subthread(target=self._subthread_handle_accepted,
-                                      args=(client,))
-                # self._sub_functions_queue.put((self._subthread_handle_accepted, (client,), {}))
         except socket.error:
             pass
 
@@ -131,45 +124,41 @@ class SocketServer:
         for key, mask in events:
             if mask == selectors.EVENT_READ:
                 self._recv_selector.unregister(key.fileobj)
-                # self._start_subthread(target=self._subthread_handle_readable, args=(key.fileobj,))
-                # self._sub_functions_queue.put((self._subthread_handle_readable, (key.fileobj,), {}))
-                self._start_subthread(target=self._subthread_handle_readable,
-                                      args=(key.fileobj,))
+                self._events_queue.put(key.fileobj)
 
     @Log('errors')
     def _mainthread_start_subfunctions(self):
-        # sleep(0.2)
         try:
-            target, args, kwargs = self._sub_functions_queue.get(timeout=self.block_time)
+            event = self._events_queue.get(timeout=self.block_time)
         except queue.Empty:
             pass
         else:
-            # self._maxSub.start_thread(target, args, kwargs)
-            print('Threads: ', threading.active_count())
-            self._max_subthreads_lock.acquire()
-            threading.Thread(target=target,
-                             args=args,
-                             kwargs=kwargs).start()
-
+            if type(event) == tuple:
+                # New client connected
+                self._threads_limiter.start_thread(target=self._subthread_handle_accepted,
+                                                   args=(event,))
+                # self._subthread_handle_accepted(event)
+            else:
+                # New message from a client
+                self._threads_limiter.start_thread(target=self._subthread_handle_readable,
+                                                   args=(event,))
+                # self._subthread_handle_readable(event)
     @Log('errors')
     def _subthread_handle_accepted(self, client):
         """Gets accepted clients from the queue object and sets up the client socket.
         The client can then be found in the clients dictionary with the socket object
         as the key.
         """
-        try:
-            conn, addr = client
-            if self.handle_incoming(conn, addr):
-                logging.info('Accepted connection from client: {}'.format(addr))
-                conn.setblocking(False)
-                self.clients[conn] = addr
-                self.register(conn)
-            else:
-                logging.info('Refused connection from client: {}'.format(addr))
-                self.disconnect(conn)
-        finally:
-            if self.max_subthreads > 0:
-                self._max_subthreads_lock.release()
+
+        conn, addr = client
+        if self.handle_incoming(conn, addr):
+            logging.info('Accepted connection from client: {}'.format(addr))
+            conn.setblocking(False)
+            self.clients[conn] = addr
+            self.register(conn)
+        else:
+            logging.info('Refused connection from client: {}'.format(addr))
+            self.disconnect(conn)
 
     @Log('errors')
     def _subthread_handle_readable(self, conn):
@@ -178,14 +167,11 @@ class SocketServer:
         true the client is again registered to the selector object otherwise the client
         is disconnected.
         """
-        try:
-            if self.handle_readable(conn):
-                self.register(conn)
-            else:
-                self.disconnect(conn)
-        finally:
-            if self.max_subthreads > 0:
-                self._max_subthreads_lock.release()
+
+        if self.handle_readable(conn):
+            self.register(conn)
+        else:
+            self.disconnect(conn)
 
     @Log('all')
     def start(self):
@@ -262,13 +248,3 @@ class SocketServer:
             except KeyError:
                 pass
             logging.info('Client disconnected: {}'.format(address))
-
-    def _start_subthread(self, target, args=(), kwargs={}):
-        if self.max_subthreads > 0:
-            self._sub_functions_queue.put((target, args, kwargs))
-        else:
-            threading.Thread(target=target,
-                             args=args,
-                             kwargs=kwargs).start()
-            print('Threads: ', threading.active_count())
-
