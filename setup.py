@@ -1,8 +1,13 @@
 #!/bin/env python3
-# from distutils.core import setup
+
 from setuptools import setup
-from ESocketS import __version__
+from esockets import __version__
 import sys
+
+
+def readme():
+    with open('README.rst') as f:
+        return f.read()
 
 print('Current version: ', __version__)
 version = __version__.split('.')
@@ -23,26 +28,26 @@ elif sys.argv[-1] == 'huge':
 
 
 version = '.'.join(version)
-with open('ESocketS/version', 'w') as f:
+with open('esockets/version', 'w') as f:
     f.write(version)
 
 setup(
-    name='ESocketS',
-    packages=['ESocketS'], # this must be the same as the name above
-    version =version,
+    name='esockets',
+    packages=['esockets'], # this must be the same as the name above
+    version=version,
     include_package_data=True,
-    license = 'MIT',
-    description = 'A socket server using select.epoll',
-    author = 'Christoffer Zakrisson',
-    author_email = 'christoffer_zakrisson@hotmail.com',
-    url = 'https://github.com/Zaeb0s/epoll-socket-server', # use the URL to the github repo
-    keywords = ['socket', 'epoll', 'server', 'poll', 'select', 'TCP', 'web'], # arbitrary keywords
-    classifiers = ['Development Status :: 4 - Beta',
+    license='MIT',
+    description='A socket server',
+    long_description=readme(),
+    author='Christoffer Zakrisson',
+    author_email='christoffer_zakrisson@hotmail.com',
+    url='https://github.com/Zaeb0s/epoll-socket-server', # use the URL to the github repo
+    keywords=['socket', 'epoll', 'server', 'poll', 'select', 'TCP', 'web', 'esockets'], # arbitrary keywords
+    classifiers=['Development Status :: 4 - Beta',
                    'Programming Language :: Python :: 3.5',
                    'Operating System :: POSIX :: Linux',
                    'License :: OSI Approved :: MIT License'],
     install_requires=['loopfunction', ]
 )
-
 
 print('Installed version: ' + version)
