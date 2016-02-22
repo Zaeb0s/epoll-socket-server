@@ -1,5 +1,5 @@
 #!/bin/env python3
-import ESocketS
+import esockets
 import logging, sys
 
 root = logging.getLogger()
@@ -32,7 +32,7 @@ def handle_readable(client):
     client.sendall(b'SERVER: ' + data)
     return True
 
-server = ESocketS.SocketServer(handle_incoming=handle_incoming,
+server = esockets.SocketServer(handle_incoming=handle_incoming,
                                handle_readable=handle_readable)
 server.start()
 print('Server started on: {}:{}'.format(server.host, server.port))
