@@ -63,8 +63,8 @@ class SocketServer:
                  queue_size=1000,
                  block_time=2,
                  selector=selectors.EpollSelector,
-                 handle_readable=lambda: True,
-                 handle_incoming=lambda: True,
+                 handle_readable=lambda client: True,
+                 handle_incoming=lambda client, address: True,
                  max_subthreads=-1):
 
         self.port = port
