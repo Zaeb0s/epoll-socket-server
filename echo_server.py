@@ -36,3 +36,6 @@ server = esockets.SocketServer(handle_incoming=handle_incoming,
                                handle_readable=handle_readable)
 server.start()
 print('Server started on: {}:{}'.format(server.host, server.port))
+
+# server = esockets.SocketServer()
+# server.start()

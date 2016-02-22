@@ -47,7 +47,7 @@ setup(
                    'Programming Language :: Python :: 3.5',
                    'Operating System :: POSIX :: Linux',
                    'License :: OSI Approved :: MIT License'],
-    install_requires=['loopfunction', ]
+    install_requires=['loopfunction', 'maxthreads']
 )
 
 print('Installed version: ' + version)

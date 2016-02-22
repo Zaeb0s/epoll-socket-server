@@ -61,7 +61,7 @@ print('Server started on: {}:{}'.format(server.host, server.port))
 When the SocketServer is initiated the following customizable variables are set if not otherwise specified
 
 Variable | Description | Default
---|--|--
+---------|-------------|--------
 port | The server port | 1234
 host | The server host |  Using the socket modules socket.gethostbyname(socket.gethostname())
 queue_size | Max number of clients awaiting to be accepted | 1000
@@ -76,8 +76,8 @@ server = esockets.SocketServer(  port=1234,
                                  queue_size=1000,
                                  block_time=2,
                                  selector=selectors.EpollSelector,
-                                 handle_readable=lambda: True,
-                                 handle_incoming=lambda: True,
+                                 handle_readable=lambda client: True,
+                                 handle_incoming=lambda client, address: True,
                                  max_subthreads=-1):
 ```
 
