@@ -1,7 +1,7 @@
 #!/bin/env python3
 import esockets
 import logging, sys
-
+import threading
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
 
@@ -30,6 +30,7 @@ def handle_readable(client):
     if data == b'':
         return False
     client.sendall(b'SERVER: ' + data)
+    print(threading.active_count())
     return True
 
 server = esockets.SocketServer(handle_incoming=handle_incoming,
