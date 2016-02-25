@@ -92,11 +92,11 @@ class SocketServer:
             loopfunction.Loop(target=self._mainthread_poll_readable,
                               on_start=lambda: logging.debug('Thread started: Poll for readable clients'),
                               on_stop=lambda: logging.debug('Thread stopped: Poll for readable clients')),
-
-            loopfunction.Loop(target=self._mainthread_start_subfunctions,
-                              on_start=lambda: logging.debug('Thread started: Start sub-functions'),
-                              on_stop=lambda: logging.debug('Thread stopped: Start sub-functions'))
         )
+        #     loopfunction.Loop(target=self._mainthread_start_subfunctions,
+        #                       on_start=lambda: logging.debug('Thread started: Start sub-functions'),
+        #                       on_stop=lambda: logging.debug('Thread stopped: Start sub-functions'))
+        # )
 
         self._threads_limiter = maxthreads.MaxThreads(max_subthreads)
         self._events_queue = queue.Queue()
@@ -110,8 +110,9 @@ class SocketServer:
             if self._accept_selector.select(timeout=self.block_time):
                 client = self._server_socket.accept()
                 logging.info('Client connected: {}'.format(client[1]))
-                self._events_queue.put(client)
-
+                # self._events_queue.put(client)
+                self._threads_limiter.start_thread(target=self._subthread_handle_accepted,
+                                                   args=(client,))
         except socket.error:
             pass
 
@@ -124,25 +125,28 @@ class SocketServer:
         for key, mask in events:
             if mask == selectors.EVENT_READ:
                 self._recv_selector.unregister(key.fileobj)
-                self._events_queue.put(key.fileobj)
-
-    @Log('errors')
-    def _mainthread_start_subfunctions(self):
-        try:
-            event = self._events_queue.get(timeout=self.block_time)
-        except queue.Empty:
-            pass
-        else:
-            if type(event) == tuple:
-                # New client connected
-                self._threads_limiter.start_thread(target=self._subthread_handle_accepted,
-                                                   args=(event,))
-                # self._subthread_handle_accepted(event)
-            else:
-                # New message from a client
+                # self._events_queue.put(key.fileobj)
                 self._threads_limiter.start_thread(target=self._subthread_handle_readable,
-                                                   args=(event,))
-                # self._subthread_handle_readable(event)
+                                                   args=(key.fileobj,))
+
+    # @Log('errors')
+    # def _mainthread_start_subfunctions(self):
+    #     try:
+    #         event = self._events_queue.get(timeout=self.block_time)
+    #     except queue.Empty:
+    #         pass
+    #     else:
+    #         if type(event) == tuple:
+    #             # New client connected
+    #             self._threads_limiter.start_thread(target=self._subthread_handle_accepted,
+    #                                                args=(event,))
+    #             # self._subthread_handle_accepted(event)
+    #         else:
+    #             # New message from a client
+    #             self._threads_limiter.start_thread(target=self._subthread_handle_readable,
+    #                                                args=(event,))
+    #             # self._subthread_handle_readable(event)
+
     @Log('errors')
     def _subthread_handle_accepted(self, client):
         """Gets accepted clients from the queue object and sets up the client socket.
