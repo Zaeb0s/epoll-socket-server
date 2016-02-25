@@ -94,7 +94,7 @@ class SocketServer:
                               on_stop=lambda: logging.debug('Thread stopped: Poll for readable clients')),
 
             loopfunction.Loop(target=self._mainthread_start_subfunctions,
-                              on_start=lambda: logging.debug('Thread started: Start sub-functions'),
+                              on_start=lambda: logging.debug('Thread started: Start sub-functions (max allowed: {})'.format(max_subthreads)),
                               on_stop=lambda: logging.debug('Thread stopped: Start sub-functions'))
         )
 
