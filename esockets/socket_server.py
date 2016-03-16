@@ -7,7 +7,7 @@ import maxthreads
 from threading import Lock
 
 
-class ClientDisconnect(Exception):
+class ConnectionBroken(Exception):
     pass
 
 
@@ -18,46 +18,48 @@ class Client:
         self.send_lock = Lock()
         self.closed = False
         self.accepted = False
+        self.close_handled = False
 
     def fileno(self):
         return self.socket.fileno()
 
-    def close(self):
-        if not self.closed:
+    def close(self, reason=''):
+        if self.closed is False:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
             except (OSError, socket.error, BrokenPipeError):
                 pass
             self.socket.close()
-            self.closed = True
+            self.closed = reason
+
 
     def send(self, bytes, timeout=-1):
         total_sent = 0
         msg_len = len(bytes)
+        print('Lock acquired')
         if self.send_lock.acquire(timeout=timeout):
             try:
                 while total_sent < msg_len:
-                    sent = self.send(bytes[total_sent:])
+                    sent = self.socket.send(bytes[total_sent:])
                     if sent == 0:
-                        raise BrokenPipeError
+                        raise ConnectionBroken('Broken pipe')
                     total_sent = total_sent + sent
-            except:
-                self.close()
-                raise
+            except Exception as e:
+                raise ConnectionBroken(str(e))
+
             finally:
                 self.send_lock.release()
+
         return total_sent
 
     def recv(self, size):
         try:
             data = self.socket.recv(size)
-        except:
-            self.close()
-            raise
+        except Exception as e:
+            raise ConnectionBroken(str(e))
 
         if data == b'':
-            self.close()
-            raise ClientDisconnect
+            raise ConnectionBroken('Client disconnected')
 
         return data
 
@@ -119,7 +121,7 @@ class SocketServer:
                  block_time=2,
                  selector=selectors.EpollSelector,
                  handle_readable=lambda client: True,
-                 handle_incoming=lambda client, address: True,
+                 handle_incoming=lambda client: True,
                  handle_closed=lambda client, reason: True,
                  max_subthreads=-1):
 
@@ -190,13 +192,17 @@ class SocketServer:
         The client can then be found in the clients dictionary with the socket object
         as the key.
         """
+        try:
+            value = self.handle_incoming(client)
+            if value is True:
+                self.register(client)
+                client.accepted = True
+            else:
+                self.disconnect(client, value)
+        except ConnectionBroken:
+            self.disconnect(client, client.closed)
 
-        self.handle_incoming(client)
-        if client.closed:
-            self._disconnect(client)
-        else:
-            client.accepted = True
-            self.register(client.socket)
+
         # if self.handle_incoming(client):
         #     logging.info('{}: Accepted connection'.format(client.address))
         #     self.clients.append(client)
@@ -212,10 +218,17 @@ class SocketServer:
         true the client is again registered to the selector object otherwise the client
         is disconnected.
         """
+        try:
+            value = self.handle_readable(client)
+            if value is True:
+                self.register(client)
+            else:
+                self.disconnect(client, value)
+        except ConnectionBroken:
+            self.disconnect(client, client.closed)
 
-        self.handle_readable(client)
-        if not client.closed:
-            self.register(client.socket)
+
+
         # else:
             # self.disconnect(conn, 'Disconnected by server')
 
@@ -237,7 +250,7 @@ class SocketServer:
     def stop(self):
         logging.info('Closing all ({}) connections...'.format(len(self.clients)))
 
-        self._disconnect(self.clients, 'Server shutting down')
+        self.disconnect(self.clients, 'Server shutting down')
         logging.info('Stopping main threads...')
         for loop_obj in self._loop_objects:
             loop_obj.send_stop_signal(silent=True)
@@ -254,6 +267,9 @@ class SocketServer:
     def register(self, client, silent=False):
         try:
             self._recv_selector.register(client, selectors.EVENT_READ)
+            logging.debug('{}: Registered to the selector'.format(
+                client.address
+            ))
         except KeyError:
             if not silent:
                 logging.error(
@@ -273,17 +289,16 @@ class SocketServer:
                 raise KeyError('Client already registered')
 
     @Log('errors')
-    def _disconnect(self, client, reason, how=socket.SHUT_RDWR):
+    def disconnect(self, client, reason, how=socket.SHUT_RDWR):
         if hasattr(client, '__iter__'):
             if client == self.clients:
                 client = self.clients.copy()
             for i in client:
-                self._disconnect(i, reason, how)
+                self.disconnect(i, reason, how)
 
         else:
             self.unregister(client, silent=True)  # will not raise errors
-
-            client.close()
+            client.close()  # will close the client socket if not already closed
 
             if client in self.clients:
                 self.clients.remove(client)

@@ -11,13 +11,15 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 root.addHandler(ch)
 
-def handle_incoming(client, address):
+def handle_incoming(client):
     """
     Return True: The client is accepted and the server starts polling for messages
     Return False: The server disconnects the client.
     """
 
-    client.sendall(b'SERVER: Connection accepted!\n')
+    client.send(b'SERVER: Connection accepted!\n')
+
+
     return True
 
 def handle_readable(client):
@@ -26,12 +28,8 @@ def handle_readable(client):
     Return False: The server disconnects the client.
     """
 
-    data = server.recv(client, 1028)
-    # data = client.recv(1028)
-    if data == b'':
-        return False
-    client.sendall(b'SERVER: ' + data)
-    # print(threading.active_count())
+    data = client.recv(1028)
+    client.send(b'SERVER: ' + data)
     return True
 
 def handle_closed(client, reason):
