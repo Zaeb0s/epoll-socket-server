@@ -28,8 +28,11 @@ def handle_readable(client):
     Return False: The server disconnects the client.
     """
 
-    data = client.recv(1028)
-    client.send(b'SERVER: ' + data)
+    data = client.recv(200, fixed=False)
+    if b'close' in data:
+        return 'Client requested close'
+    # client.close()
+    client.send(b'SERVER: ' + data + b'\n')
     return True
 
 def handle_closed(client, reason):

@@ -23,45 +23,48 @@ class Client:
     def fileno(self):
         return self.socket.fileno()
 
-    def close(self, reason=''):
-        if self.closed is False:
-            try:
-                self.socket.shutdown(socket.SHUT_RDWR)
-            except (OSError, socket.error, BrokenPipeError):
-                pass
-            self.socket.close()
-            self.closed = reason
-
+    def close(self):
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR)
+        except socket.error:
+            pass
+        self.socket.close()
+        self.closed = True
 
     def send(self, bytes, timeout=-1):
         total_sent = 0
         msg_len = len(bytes)
-        print('Lock acquired')
+        # print('Lock acquired')
         if self.send_lock.acquire(timeout=timeout):
             try:
                 while total_sent < msg_len:
                     sent = self.socket.send(bytes[total_sent:])
                     if sent == 0:
-                        raise ConnectionBroken('Broken pipe')
+                        raise RuntimeError('Socket connection broken on send')
                     total_sent = total_sent + sent
-            except Exception as e:
-                raise ConnectionBroken(str(e))
-
             finally:
                 self.send_lock.release()
 
         return total_sent
 
-    def recv(self, size):
-        try:
+    def recv(self, size, fixed=True):
+        if fixed:
+            chunks = []
+            bytes_recd = 0
+            while bytes_recd < size:
+                chunk = self.socket.recv(min(size - bytes_recd, 2048))
+                if chunk == b'':
+                    raise RuntimeError("Socket connection broken on recv")
+                chunks.append(chunk)
+                bytes_recd += len(chunk)
+            return b''.join(chunks)
+
+        else:
             data = self.socket.recv(size)
-        except Exception as e:
-            raise ConnectionBroken(str(e))
+            if data == b'':
+                raise RuntimeError("Socket connection broken on recv")
+            return data
 
-        if data == b'':
-            raise ConnectionBroken('Client disconnected')
-
-        return data
 
 class Log:
     INDENTATION = 4
@@ -194,22 +197,14 @@ class SocketServer:
         """
         try:
             value = self.handle_incoming(client)
-            if value is True:
-                self.register(client)
+        except (socket.error, RuntimeError) as e:
+            self.disconnect(client, str(e))
+        else:
+            if value is True and not client.closed:
                 client.accepted = True
+                self.register(client)
             else:
                 self.disconnect(client, value)
-        except ConnectionBroken:
-            self.disconnect(client, client.closed)
-
-
-        # if self.handle_incoming(client):
-        #     logging.info('{}: Accepted connection'.format(client.address))
-        #     self.clients.append(client)
-        #     self.register(client)
-        # else:
-        #     logging.info('{}: Refused connection'.format(client.address))
-        #     self._disconnect(client, 'Connection refused')
 
     @Log('errors')
     def _subthread_handle_readable(self, client):
@@ -220,17 +215,13 @@ class SocketServer:
         """
         try:
             value = self.handle_readable(client)
-            if value is True:
+        except (socket.error, RuntimeError) as e:
+            self.disconnect(client, str(e))
+        else:
+            if value is True and not client.closed:
                 self.register(client)
             else:
                 self.disconnect(client, value)
-        except ConnectionBroken:
-            self.disconnect(client, client.closed)
-
-
-
-        # else:
-            # self.disconnect(conn, 'Disconnected by server')
 
     @Log('all')
     def start(self):
@@ -298,22 +289,24 @@ class SocketServer:
 
         else:
             self.unregister(client, silent=True)  # will not raise errors
-            client.close()  # will close the client socket if not already closed
+            client.close()
 
             if client in self.clients:
                 self.clients.remove(client)
 
             logging.info('{}: Disconnected (socket closed)'.format(client.address))
             self.handle_closed(client, reason)
-    #
-    # def send(self, client, bytes, timeout=-1):
-    #     """Send bytes to a client, automatically disconnects the client on error
-    #     """
-    #     try:
-    #         sent = client.send(bytes, timeout)
-    #     except:
-    #         self._disconnect(client)
-    #         raise
+
+    def send(self, client, bytes, timeout=-1):
+        """Send bytes to a client, automatically disconnects the client on error
+        """
+        try:
+            sent = client.send(bytes, timeout)
+        except (socket.error, RuntimeError) as e:
+            self.disconnect(client, str(e))
+            return 0
+        return sent
+
     #
     #     return sent
     #
