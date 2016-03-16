@@ -26,15 +26,20 @@ def handle_readable(client):
     Return False: The server disconnects the client.
     """
 
-    data = client.recv(1028)
+    data = server.recv(client, 1028)
+    # data = client.recv(1028)
     if data == b'':
         return False
     client.sendall(b'SERVER: ' + data)
-    print(threading.active_count())
+    # print(threading.active_count())
     return True
 
+def handle_closed(client, reason):
+    print('Client socket closed: ', reason)
+
 server = esockets.SocketServer(handle_incoming=handle_incoming,
-                               handle_readable=handle_readable)
+                               handle_readable=handle_readable,
+                               handle_closed=handle_closed)
 server.start()
 print('Server started on: {}:{}'.format(server.host, server.port))
 
