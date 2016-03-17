@@ -16,15 +16,23 @@ server_selector = selectors.EpollSelector()
 
 
 class Client:
-    def __init__(self, sock, address, handle_closed):
+    def __init__(self, sock, address):
         self.socket = sock
         self.address = address
         self.send_lock = Lock()
         self.closed = False
         self.registered = False
-        self.handle_closed = handle_closed
-
         clients.append(self)
+
+    def handle_accept(self):
+        pass
+
+    def handle_message(self):
+        pass
+
+    def handle_closed(self, reason):
+        # Cleanup
+        pass
 
     def fileno(self):
         return self.socket.fileno()
@@ -37,7 +45,7 @@ class Client:
         self.registered = False
         clients_selector.unregister(self)
 
-    def close(self, reason, how=socket.SHUT_RDWR):
+    def close(self, reason='', how=socket.SHUT_RDWR):
         if not self.closed:
             self.closed = True
             logging.debug('CLOSED: {}'.format(reason))
@@ -49,7 +57,7 @@ class Client:
             except socket.error:
                 pass
             self.socket.close()
-            self.handle_closed(self, reason)
+            self.handle_closed(reason)
 
     def _send(self, bytes, timeout=-1):
         total_sent = 0
@@ -103,10 +111,6 @@ class Client:
         except (RuntimeError, socket.error) as e:
             self.close(reason=str(e))
             raise ConnectionBroken(str(e))
-
-
-
-
 
 
 class Log:
@@ -166,9 +170,10 @@ class SocketServer:
                  queue_size=1000,
                  block_time=2,
                  # selector=selectors.EpollSelector,
-                 handle_readable=lambda client: True,
-                 handle_incoming=lambda client: True,
-                 handle_closed=lambda client, reason: True,
+                 # handle_readable=lambda client: True,
+                 # handle_incoming=lambda client: True,
+                 # handle_closed=lambda client, reason: True,
+                 client_class=Client,
                  max_subthreads=-1):
 
         self.port = port
@@ -176,9 +181,10 @@ class SocketServer:
         self.queue_size = queue_size
         self.block_time = block_time
         # self.selector = selector
-        self.handle_readable = handle_readable
-        self.handle_incoming = handle_incoming
-        self.handle_closed = handle_closed
+        # self.handle_readable = handle_readable
+        # self.handle_incoming = handle_incoming
+        # self.handle_closed = handle_closed
+        self.client_class = client_class
 
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -211,7 +217,7 @@ class SocketServer:
             if server_selector.select(timeout=self.block_time):
                 sock, address = self._server_socket.accept()
                 sock.setblocking(False)
-                client = Client(sock, address, self.handle_closed)
+                client = self.client_class(sock, address)
                 logging.info('{}: New socket connection detected'.format(address))
                 self._threads_limiter.start_thread(target=self._subthread_handle_accepted,
                                                    args=(client,))
@@ -239,7 +245,8 @@ class SocketServer:
         """
 
         try:
-            self.handle_incoming(client)
+            # self.handle_incoming(client)
+            client.handle_accept()
         except ConnectionBroken:
             pass
         else:
@@ -255,7 +262,8 @@ class SocketServer:
         is disconnected.
         """
         try:
-            self.handle_readable(client)
+            # self.handle_readable(client)
+            client.handle_message()
         except ConnectionBroken:
             pass
         else:
