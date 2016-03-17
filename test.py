@@ -25,12 +25,12 @@ class Client:
 
 
 
-def handle_incoming(client, address):
-    return True
+def handle_incoming(client):
+    pass
 
 
 def handle_readable(client):
-    data = client.recv(1028)
+    data = client.recv(1028, fixed=False)
     print(threading.active_count())
     # print(data)
     if data == b'':

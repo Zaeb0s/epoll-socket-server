@@ -4,12 +4,13 @@ import logging, sys
 import threading
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
-
+fh = logging.FileHandler('spam.log')
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(levelname)s - %(message)s')
 ch.setFormatter(formatter)
-root.addHandler(ch)
+root.addHandler(fh)
+
 
 def handle_incoming(client):
     """
@@ -20,7 +21,7 @@ def handle_incoming(client):
     client.send(b'SERVER: Connection accepted!\n')
 
 
-    return True
+    # return True
 
 def handle_readable(client):
     """
@@ -28,12 +29,14 @@ def handle_readable(client):
     Return False: The server disconnects the client.
     """
 
-    data = client.recv(200, fixed=False)
-    if b'close' in data:
-        return 'Client requested close'
+    data = client.recv(1, fixed=False)
+
+
+    # if b'close' in data:
+    #     return 'Client requested close'
     # client.close()
     client.send(b'SERVER: ' + data + b'\n')
-    return True
+
 
 def handle_closed(client, reason):
     print('Client socket closed: ', reason)
