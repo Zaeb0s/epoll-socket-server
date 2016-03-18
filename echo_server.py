@@ -14,7 +14,6 @@ root.addHandler(ch)
 class MyClientHandler(esockets.ClientHandler):
     def handle_socket_message(self):
         message = self.recv(1024).strip()
-        message = self.recv(1024).strip()
         print('Client: ', message)
         self.send(b'Server: ' + message + b'\n')
         return True
@@ -33,7 +32,8 @@ class MyClientHandler(esockets.ClientHandler):
 # #                                handle_closed=handle_closed)
 
 port = int(sys.argv[1])
-server = esockets.SocketServer(host='130.240.202.41', port=port, client_handler=MyClientHandler)
+host = '130.240.202.41'
+server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))
