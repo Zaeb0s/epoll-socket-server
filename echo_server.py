@@ -31,7 +31,9 @@ class MyClientHandler(esockets.ClientHandler):
 # # server = esockets.SocketServer(handle_incoming=handle_incoming,
 # #                                handle_readable=handle_readable,
 # #                                handle_closed=handle_closed)
-server = esockets.SocketServer(client_handler=MyClientHandler)
+
+port = int(sys.argv[1])
+server = esockets.SocketServer(host='130.240.202.41', port=port, client_handler=MyClientHandler)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))
