@@ -5,113 +5,179 @@ import loopfunction
 import logging
 import maxthreads
 from threading import Lock
+from errno import EALREADY, EINPROGRESS, EWOULDBLOCK, ECONNRESET, EINVAL, \
+     ENOTCONN, ESHUTDOWN, EISCONN, EBADF, ECONNABORTED, EPIPE, EAGAIN, \
+     errorcode
 
+_DISCONNECTED = frozenset({ECONNRESET, ENOTCONN, ESHUTDOWN, ECONNABORTED, EPIPE,
+                           EBADF})
 
-class ConnectionBroken(Exception):
+class ConnectionClosed(Exception):
     pass
 
 clients = []
 clients_selector = selectors.EpollSelector()
 server_selector = selectors.EpollSelector()
 
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server_socket.setblocking(False)
 
-class Client:
-    def __init__(self, sock, address):
-        self.socket = sock
-        self.address = address
-        self.send_lock = Lock()
-        self.closed = False
-        self.registered = False
+server_selector.register(server_socket, selectors.EVENT_READ)
+
+class ClientHandler:
+    def __init__(self):
+
+        self.socket = None
+        self.address = None
+        self._send_lock = Lock()
+        self.socket_closed = False
+        self.socket_registered = False
+
         clients.append(self)
 
-    def handle_accept(self):
+    def _handle_socket_accept(self):
+        try:
+            value = self.handle_socket_accept()
+            if value is True:
+                self.selector_register()
+            else:
+                self.close(value or '')
+        except ConnectionClosed as why: 
+            # Catching expected errors
+            self.close(str(why))
+
+    def _handle_socket_message(self):
+        try:
+            value = self.handle_socket_message()
+            if value is True:
+                self.selector_register()
+            else:
+                self.close(value or '')
+        except ConnectionClosed as why: 
+            # Catching expected errors
+            self.close(str(why))
+
+    def handle_socket_accept(self):
+        """Return string or False: the socket is closed and handle_socket_close is called with
+         reason=string/''. Return True the socket is registered to the client selector
+        """
+        return True
+
+    def handle_socket_message(self):
+        """Return string or False: the socket is closed and handle_socket_close is called
+         with reason=string/'' Return True the socket is registered to the client selector
+        """
         pass
 
-    def handle_message(self):
-        pass
-
-    def handle_closed(self, reason):
-        # Cleanup
+    def handle_socket_close(self, reason):
+        """Called before the socket is closed
+        """
         pass
 
     def fileno(self):
         return self.socket.fileno()
 
-    def register(self):
-        self.registered = True
+    def selector_register(self):
+        self.socket_registered = True
         clients_selector.register(self, selectors.EVENT_READ)
 
-    def unregister(self):
-        self.registered = False
+    def selector_unregister(self):
+        self.socket_registered = False
         clients_selector.unregister(self)
 
-    def close(self, reason='', how=socket.SHUT_RDWR):
-        if not self.closed:
-            self.closed = True
-            logging.debug('CLOSED: {}'.format(reason))
-            if self.registered:
-                self.unregister()
+    def close(self, reason, how=socket.SHUT_RDWR):
+        try:
+            self.socket_closed = True
+            self.handle_socket_close(reason)
+            if self.socket_registered:
+                self.selector_unregister()
             clients.remove(self)
             try:
                 self.socket.shutdown(how)
             except socket.error:
                 pass
             self.socket.close()
-            self.handle_closed(reason)
+        except OSError as why:
+            if why.args[0] not in (ENOTCONN, EBADF):
+                raise
 
-    def _send(self, bytes, timeout=-1):
-        total_sent = 0
-        msg_len = len(bytes)
-        # print('Lock acquired')
-        if self.send_lock.acquire(timeout=timeout):
-            try:
-                while total_sent < msg_len:
-                    sent = self.socket.send(bytes[total_sent:])
-                    if sent == 0:
-                        raise RuntimeError('Socket connection broken on send')
-                    total_sent = total_sent + sent
-            finally:
-                self.send_lock.release()
+    # def _send(self, bytes, timeout=-1):
+    #     total_sent = 0
+    #     msg_len = len(bytes)
+    #     # print('Lock acquired')
+    #     if self._send_lock.acquire(timeout=timeout):
+    #         try:
+    #             while total_sent < msg_len:
+    #                 sent = self.socket.send(bytes[total_sent:])
+    #                 if sent == 0:
+    #                     raise RuntimeError('Socket connection broken on send')
+    #                 total_sent = total_sent + sent
+    #         finally:
+    #             self._send_lock.release()
+    #
+    #         return total_sent
+    #     else:
+    #         raise RuntimeError('Timed out while sending')
 
-        return total_sent
 
-    def _recv(self, size, fixed=True):
-        if fixed:
-            data = bytearray(size)
-            bytes_recd = 0
+    # def _recv(self, size, fixed=True):
+    #     if fixed:
+    #         data = bytearray(size)
+    #         bytes_recd = 0
+    # 
+    #         while bytes_recd < size:
+    #             to_recv = min(size-bytes_recd, 2048)
+    #             chunk = self.socket.recv(to_recv)
+    # 
+    #             if chunk == b'':
+    #                 raise RuntimeError("Client disconnect")
+    # 
+    #             data[bytes_recd:bytes_recd+to_recv] = chunk
+    #             bytes_recd += len(chunk)
+    # 
+    #         return bytes(data)
+    # 
+    #     else:
+    #         data = self.socket.recv(size)
+    #         if data == b'':
+    #             raise RuntimeError("Socket connection broken on recv")
+    #         return data
 
-            while bytes_recd < size:
-                to_recv = min(size-bytes_recd, 2048)
-                chunk = self.socket.recv(to_recv)
+    # def send(self, bytes, timeout=-1):
+    #     try:
+    #         return self._send(bytes, timeout)
+    #     except (RuntimeError, socket.error) as e:
+    #         self.close(reason=str(e))
+    #         raise ConnectionBroken(str(e))
 
-                if chunk == b'':
-                    raise RuntimeError("Client disconnect")
-
-                data[bytes_recd:bytes_recd+to_recv] = chunk
-                bytes_recd += len(chunk)
-
-            return bytes(data)
-
-        else:
-            data = self.socket.recv(size)
-            if data == b'':
-                raise RuntimeError("Socket connection broken on recv")
-            return data
-
-    def send(self, bytes, timeout=-1):
+    def recv(self, buffer_size):
         try:
-            return self._send(bytes, timeout)
-        except (RuntimeError, socket.error) as e:
-            self.close(reason=str(e))
-            raise ConnectionBroken(str(e))
+            data = self.socket.recv(buffer_size)
+            if not data:
+                # a closed connection is indicated by signaling
+                # a read condition, and having recv() return 0.
+                raise ConnectionClosed('Socket connection closed normally')
+            else:
+                return data
+        except OSError as why:
+            # winsock sometimes raises ENOTCONN
+            if why.args[0] in _DISCONNECTED:
+                raise ConnectionClosed('Socket connection closed ({})'.format(why))
+            else:
+                raise
 
-    def recv(self, size, fixed=True):
+    def send(self, data):
         try:
-            return self._recv(size, fixed)
-        except (RuntimeError, socket.error) as e:
-            self.close(reason=str(e))
-            raise ConnectionBroken(str(e))
-
+            result = self.socket.send(data)
+            return result
+        except OSError as why:
+            if why.args[0] == EWOULDBLOCK:
+                return 0
+            elif why.args[0] in _DISCONNECTED:
+                raise ConnectionClosed('Socket connection closed ({})'.format(why))
+            else:
+                raise
 
 class Log:
     INDENTATION = 4
@@ -173,7 +239,7 @@ class SocketServer:
                  # handle_readable=lambda client: True,
                  # handle_incoming=lambda client: True,
                  # handle_closed=lambda client, reason: True,
-                 client_class=Client,
+                 client_handler=ClientHandler,
                  max_subthreads=-1):
 
         self.port = port
@@ -184,25 +250,25 @@ class SocketServer:
         # self.handle_readable = handle_readable
         # self.handle_incoming = handle_incoming
         # self.handle_closed = handle_closed
-        self.client_class = client_class
+        self.client_handler = client_handler
 
-        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._server_socket.setblocking(False)
+        # self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # self._server_socket.setblocking(False)
 
         # self._accept_selector = selector()
         # self._recv_selector = selector()
 
-        server_selector.register(self._server_socket, selectors.EVENT_READ)
+        # server_selector.register(self._server_socket, selectors.EVENT_READ)
 
         self._loop_objects = (
             loopfunction.Loop(target=self._mainthread_accept_clients,
-                              on_start=lambda: logging.debug('Thread started: Accept clients'),
-                              on_stop=lambda: logging.debug('Thread stopped: Accept clients')),
+                              on_start=lambda: logging.info('Thread started: Accept clients'),
+                              on_stop=lambda: logging.info('Thread stopped: Accept clients')),
 
             loopfunction.Loop(target=self._mainthread_poll_readable,
-                              on_start=lambda: logging.debug('Thread started: Poll for readable clients'),
-                              on_stop=lambda: logging.debug('Thread stopped: Poll for readable clients')),
+                              on_start=lambda: logging.info('Thread started: Poll for readable clients'),
+                              on_stop=lambda: logging.info('Thread stopped: Poll for readable clients')),
 
         )
 
@@ -215,12 +281,21 @@ class SocketServer:
         """
         try:
             if server_selector.select(timeout=self.block_time):
-                sock, address = self._server_socket.accept()
-                sock.setblocking(False)
-                client = self.client_class(sock, address)
-                logging.info('{}: New socket connection detected'.format(address))
-                self._threads_limiter.start_thread(target=self._subthread_handle_accepted,
-                                                   args=(client,))
+                # sock, address = self._server_socket.accept()
+
+                # sock.setblocking(False)
+                # client = self.client_class(sock, address)
+                pair = self.accept()
+                if pair is not None:
+                    client = self.client_handler()
+                    client.socket, client.address = pair
+                    client.socket.setblocking(False)
+                    self._threads_limiter.start_thread(target=client._handle_socket_accept)
+
+                # client = self.client_handler()  # accepts the new connection and adds client to the list
+                # self._threads_limiter.start_thread(target=self._subthread_handle_accepted,
+                #                                    args=(client,))
+
         except socket.error:
             pass
 
@@ -233,49 +308,50 @@ class SocketServer:
         for key, mask in events:
             if mask == selectors.EVENT_READ:
                 client = key.fileobj
-                client.unregister()
-                self._threads_limiter.start_thread(target=self._subthread_handle_readable,
-                                                   args=(client,))
+                client.selector_unregister()
+                # self._threads_limiter.start_thread(target=self._subthread_handle_readable,
+                #                                    args=(client,))
+                self._threads_limiter.start_thread(target=client._handle_socket_message)
 
-    @Log('errors')
-    def _subthread_handle_accepted(self, client):
-        """Gets accepted clients from the queue object and sets up the client socket.
-        The client can then be found in the clients dictionary with the socket object
-        as the key.
-        """
-
-        try:
-            # self.handle_incoming(client)
-            client.handle_accept()
-        except ConnectionBroken:
-            pass
-        else:
-            if not client.closed:
-                client.accepted = True
-                client.register()
-
-    @Log('errors')
-    def _subthread_handle_readable(self, client):
-        """Handles readable client sockets. Calls the user modified handle_readable with
-        the client socket as the only variable. If the handle_readable function returns
-        true the client is again registered to the selector object otherwise the client
-        is disconnected.
-        """
-        try:
-            # self.handle_readable(client)
-            client.handle_message()
-        except ConnectionBroken:
-            pass
-        else:
-            if not client.closed:
-                client.register()
+    # @Log('errors')
+    # def _subthread_handle_accepted(self, client):
+    #     """Gets accepted clients from the queue object and sets up the client socket.
+    #     The client can then be found in the clients dictionary with the socket object
+    #     as the key.
+    #     """
+    #
+    #     try:
+    #         # self.handle_incoming(client)
+    #         client.handle_socket_accept()
+    #     except ConnectionBroken:
+    #         pass
+    #     else:
+    #         if not client.socket_closed:
+    #             client.accepted = True
+    #             client.selector_register()
+    #
+    # @Log('errors')
+    # def _subthread_handle_readable(self, client):
+    #     """Handles readable client sockets. Calls the user modified handle_readable with
+    #     the client socket as the only variable. If the handle_readable function returns
+    #     true the client is again registered to the selector object otherwise the client
+    #     is disconnected.
+    #     """
+    #     try:
+    #         # self.handle_readable(client)
+    #         client.handle_socket_message()
+    #     except ConnectionBroken:
+    #         pass
+    #     else:
+    #         if not client.socket_closed:
+    #             client.selector_register()
 
     @Log('all')
     def start(self):
         logging.info('Binding server socket to {}:{}'.format(self.host, self.port))
-        self._server_socket.bind((self.host, self.port))
+        server_socket.bind((self.host, self.port))
 
-        self._server_socket.listen(self.queue_size)
+        server_socket.listen(self.queue_size)
         logging.info('Server socket now listening (queue_size={})'.format(self.queue_size))
 
         logging.info('Starting main threads...')
@@ -300,80 +376,25 @@ class SocketServer:
             loop_obj.stop(silent=True)
 
         logging.info('Shutting down server socket...')
-        self._server_socket.shutdown(socket.SHUT_RDWR)
+        server_socket.shutdown(socket.SHUT_RDWR)
         logging.info('Closing server socket...')
-        self._server_socket.close()
+        server_socket.close()
 
     @staticmethod
     def clients():
         return clients
 
-    # @Log('errors')
-    # def _register(self, client, silent=False):
-    #     try:
-    #         self._recv_selector.register(client, selectors.EVENT_READ)
-    #         logging.debug('{}: Registered to the selector'.format(
-    #             client.address
-    #         ))
-    #     except KeyError:
-    #         if not silent:
-    #             logging.error(
-    #                 '{}: Tried to register an already registered client'.format(client.address)
-    #             )
-    #             raise KeyError('Client already registered')
-
-    # @Log('errors')
-    # def _unregister(self, client, silent=False):
-    #     try:
-    #         self._recv_selector.unregister(client)
-    #     except KeyError:
-    #         if not silent:
-    #             logging.error(
-    #                 'Tried to unregister a client that is not registered: {}'.format(client.address)
-    #             )
-    #             raise KeyError('Client already registered')
-
-    # @Log('errors')
-    # def close(self, client, reason, how=socket.SHUT_RDWR):
-    #     if hasattr(client, '__iter__'):
-    #         if client == self.clients:
-    #             client = self.clients.copy()
-    #         for i in client:
-    #             self.close(i, reason, how)
-    #
-    #     else:
-    #         if client in self.clients:
-    #             self.clients.remove(client)
-    #
-    #         if not client.closed:
-    #             self._unregister(client, silent=True)  # will not raise errors
-    #
-    #         client.close(how)
-    #         logging.info('{}: Disconnected (socket closed)'.format(client.address))
-    #         self.handle_closed(client, reason)
-
-    # def send(self, client, bytes, timeout=-1):
-    #     """Send bytes to a client, automatically disconnects the client on error
-    #     """
-    #     try:
-    #         if client in self.clients:
-    #             sent = client.send(bytes, timeout)
-    #         else:
-    #             return 0
-    #     except (socket.error, RuntimeError, OSError) as e:
-    #         self.close(client, str(e))
-    #         return 0
-    #
-    #     return sent
-
-    #
-    #     return sent
-    #
-    # def recv(self, client, size):
-    #     try:
-    #         data = client.recv(size)
-    #     except:
-    #         self._disconnect(client)
-    #         raise
-    #
-    #     return data
+    def accept(self):
+        """ Returns either an address pair or None
+        """
+        try:
+            conn, addr = server_socket.accept()
+        except TypeError:
+            return None
+        except OSError as why:
+            if why.args[0] in (EWOULDBLOCK, ECONNABORTED, EAGAIN):
+                return None
+            else:
+                raise
+        else:
+            return conn, addr

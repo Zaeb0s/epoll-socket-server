@@ -9,57 +9,51 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(levelname)s - %(message)s')
 ch.setFormatter(formatter)
-root.addHandler(fh)
-
-class Client(esockets.Client):
-    def handle_message(self):
-        message = self.recv(1024, fixed=False).strip()
+root.addHandler(ch)
+#
+class MyClientHandler(esockets.ClientHandler):
+    def handle_socket_message(self):
+        message = self.recv(1024).strip()
+        message = self.recv(1024).strip()
         print('Client: ', message)
         self.send(b'Server: ' + message + b'\n')
-        self.close('Invalid request')
+        return True
 
-    def handle_accept(self):
+    def handle_socket_accept(self):
         print(self.address, ' Connected: ')
+        return True
 
-    def handle_closed(self, reason):
+    def handle_socket_close(self, reason=''):
+        self.send(b'Closing socket: ' + reason.encode() + b'\n')
         print(self.address, ' Disconnected: ', reason)
 
-# def handle_incoming(client):
-#     """
-#     Return True: The client is accepted and the server starts polling for messages
-#     Return False: The server disconnects the client.
-#     """
 #
-#     client.send(b'SERVER: Connection accepted!\n')
+# # server = esockets.SocketServer(handle_incoming=handle_incoming,
+# #                                handle_readable=handle_readable,
+# #                                handle_closed=handle_closed)
+server = esockets.SocketServer(client_handler=MyClientHandler)
 #
-#
-#     # return True
-#
-# def handle_readable(client):
-#     """
-#     Return True: The client is re-registered to the selector object.
-#     Return False: The server disconnects the client.
-#     """
-#
-#     data = client.recv(1, fixed=False)
-#
-#
-#     # if b'close' in data:
-#     #     return 'Client requested close'
-#     # client.close()
-#     client.send(b'SERVER: ' + data + b'\n')
-
-
-def handle_closed(client, reason):
-    print('Client socket closed: ', reason)
-
-# server = esockets.SocketServer(handle_incoming=handle_incoming,
-#                                handle_readable=handle_readable,
-#                                handle_closed=handle_closed)
-server = esockets.SocketServer(client_class=Client)
-
 server.start()
-print('Server started on: {}:{}'.format(server.host, server.port))
+# print('Server started on: {}:{}'.format(server.host, server.port))
+#
+# # server = esockets.SocketServer()
+# # server.start()
 
-# server = esockets.SocketServer()
-# server.start()
+# import socketserver
+#
+#
+# clients = []
+#
+# class Client(socketserver.BaseRequestHandler):
+#     def handle(self):
+#         print(self.client_address, ' Connected')
+#         clients.append(self.request)
+#         return True
+#
+# HOST, PORT = "localhost", 9999
+#
+# # Create the server, binding to localhost on port 9999
+# server = socketserver.TCPServer((HOST, PORT), Client)
+# server.allow_reuse_address  = True
+# server.serve_forever(2)
+
