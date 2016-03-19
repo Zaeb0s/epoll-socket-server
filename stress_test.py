@@ -60,10 +60,10 @@ def users(no_users):
 
 # threading.Thread(target=send_messages).start()
 
-threading.Thread(target=users, args=(500,)).start()
-threading.Thread(target=users, args=(500,)).start()
-threading.Thread(target=users, args=(500,)).start()
-threading.Thread(target=users, args=(500,)).start()
+threading.Thread(target=users, args=(1000,)).start()
+threading.Thread(target=users, args=(1000,)).start()
+threading.Thread(target=users, args=(1000,)).start()
+threading.Thread(target=users, args=(1000,)).start()
 
 
 
