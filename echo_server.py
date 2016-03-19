@@ -14,6 +14,7 @@ root.addHandler(ch)
 class MyClientHandler(esockets.ClientHandler):
     def handle_socket_message(self):
         message = self.recv(1024).strip()
+        print(self.address(), message)
         # print('Client: ', message)
         self.send(b'Server: ' + message + b'\n')
         return True
