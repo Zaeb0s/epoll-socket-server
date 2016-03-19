@@ -285,6 +285,7 @@ class SocketServer:
                     client._socket.setblocking(False)
                     client._server = self
                     self.clients.append(client)
+                    logging.debug('New connection: {} ({})'.format(client.address(), len(self.clients)))
                     self._threads_limiter.start_thread(target=client._handle_socket_accept)
 
         except socket.error:
@@ -374,7 +375,6 @@ class SocketServer:
         """
         try:
             conn, addr = self._server_socket.accept()
-            logging.debug('New connection: {}:{} ({})'.format(addr[0], addr[1], len(self.clients)))
         except TypeError:
             return None
         except OSError as why:
