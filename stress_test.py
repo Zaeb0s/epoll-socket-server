@@ -1,22 +1,7 @@
 #!/bin/env python3
-import esockets
-import socket
-# import logging, sys
-from time import sleep, time
-from random import random
-import psutil
-import sys
-from matplotlib import pyplot
-import threading
-# root = logging.getLogger()
-# root.setLevel(logging.DEBUG)
-# ch = logging.StreamHandler(sys.stdout)
-# ch.setLevel(logging.DEBUG)
-# formatter = logging.Formatter('%(levelname)s - %(message)s')
-# ch.setFormatter(formatter)
-# root.addHandler(ch)
 
-# pid = int(sys.argv[1])
+import socket
+import threading
 
 # host = '192.168.1.5'
 host = '130.240.202.41'
@@ -26,18 +11,27 @@ no_clients = 20
 messages_per_second = 0.0000001
 message = b'hello server'
 
-
-
-
-# Find the process
-# process = None
-# for i in psutil.process_iter():
-#     if i.pid == pid:
-#         process = i
-#         break
-
-# if process is None:
-#     raise RuntimeError('Could not find process')
+# def send_messages():
+#
+#     i = 0
+#     print('Sending messages at {} m/s'.format(messages_per_second))
+#     ms = messages_per_second
+#     while True:
+#         if ms != messages_per_second:
+#             ms = messages_per_second
+#             print('Sending messages at {} m/s'.format(messages_per_second))
+#
+#         t1 = time()
+#         i_client = i % len(clients)
+#         ping1 = time()
+#         clients[i_client].send(message)
+#         clients[i_client].recv(len(message))
+#         ping = (time() - ping1)*1000
+#         if (i % 100) == 0:
+#             print('Ping: ' + str(ping))
+#         i += 1
+#         t2 = time()
+#         sleep(max(0, 1/messages_per_second - (t2-t1)))
 
 
 def connect(host, port):
@@ -50,49 +44,11 @@ def connect(host, port):
 
 
 clients = []
-# memory = [process.memory_info().rss/1e6]
-# client_count = [0]
-for i in range(no_clients):
-    try:
-        clients.append(connect(host, port))
-        # memory.append(process.memory_info().rss/1e6)
-        # client_count.append(len(clients))
-    except OSError:
-        break
-
-# pyplot.plot(client_count, memory)
-# pyplot.ylabel('MB')
-# pyplot.xlabel('Client count')
-# pyplot.show()
-print('Successfully connected {} clients'.format(len(clients)))
-
-
-def send_messages():
-
-    i = 0
-    print('Sending messages at {} m/s'.format(messages_per_second))
-    ms = messages_per_second
-    while True:
-        if ms != messages_per_second:
-            ms = messages_per_second
-            print('Sending messages at {} m/s'.format(messages_per_second))
-
-        t1 = time()
-        i_client = i % len(clients)
-        ping1 = time()
-        clients[i_client].send(message)
-        clients[i_client].recv(len(message))
-        ping = (time() - ping1)*1000
-        if (i % 100) == 0:
-            print('Ping: ' + str(ping))
-        i += 1
-        t2 = time()
-        sleep(max(0, 1/messages_per_second - (t2-t1)))
-
 def users(no_users):
     if no_users > len(clients):
-        for i in range(no_users-len(clients)):
-            clients.append(connect(host,port))
+        no_to_connect = no_users - len(clients)
+        for i in range(no_to_connect):
+            clients.append(connect(host, port))
     elif no_users < len(clients):
         no_to_close = len(clients) - no_users
         for i in range(no_to_close):
@@ -102,13 +58,12 @@ def users(no_users):
     print('User count now: {}'.format(len(clients)))
 
 
-threading.Thread(target=send_messages).start()
+# threading.Thread(target=send_messages).start()
 
-# except KeyboardInterrupt:
-#     for client in clients:
-#         client.shutdown(socket.SHUT_RDWR)
-#         client.close()
-#     sys.exit(0)
+threading.Thread(target=users, args=(500,)).start()
+threading.Thread(target=users, args=(500,)).start()
+threading.Thread(target=users, args=(500,)).start()
+threading.Thread(target=users, args=(500,)).start()
 
 
 
