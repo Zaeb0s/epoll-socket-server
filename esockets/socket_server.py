@@ -374,7 +374,7 @@ class SocketServer:
         """
         try:
             conn, addr = self._server_socket.accept()
-            logging.debug('New connection: {}:{} ({})'.format(addr[0], addr[1]), len(self.clients))
+            logging.debug('New connection: {}:{} ({})'.format(addr[0], addr[1], len(self.clients)))
         except TypeError:
             return None
         except OSError as why:
