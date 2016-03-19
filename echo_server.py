@@ -23,7 +23,8 @@ class MyClientHandler(esockets.ClientHandler):
         return True
 
     def handle_socket_close(self, reason=''):
-        self.send(b'Closing socket: ' + reason.encode() + b'\n')
+        pass
+        # self.send(b'Closing socket: ' + reason.encode() + b'\n')
         # print(self.address, ' Disconnected: ', reason)
 
 #
@@ -33,7 +34,8 @@ class MyClientHandler(esockets.ClientHandler):
 
 port = int(sys.argv[1])
 host = '130.240.202.41'
-server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler)
+server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
+                               queue_size=10)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))

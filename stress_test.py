@@ -18,11 +18,12 @@ import threading
 
 # pid = int(sys.argv[1])
 
-host = '192.168.1.5'
+# host = '192.168.1.5'
+host = '130.240.202.41'
 port = 1234
 
-no_clients = 200
-messages_per_second = 100
+no_clients = 20
+messages_per_second = 0.0000001
 message = b'hello server'
 
 
@@ -77,8 +78,12 @@ def send_messages():
 
         t1 = time()
         i_client = i % len(clients)
+        ping1 = time()
         clients[i_client].send(message)
         clients[i_client].recv(len(message))
+        ping = (time() - ping1)*1000
+        if (i % 100) == 0:
+            print('Ping: ' + str(ping))
         i += 1
         t2 = time()
         sleep(max(0, 1/messages_per_second - (t2-t1)))
