@@ -20,7 +20,7 @@ import threading
 
 # host = '192.168.1.5'
 host = '130.240.202.41'
-port = 1234
+port = 8000
 
 no_clients = 20
 messages_per_second = 0.0000001
@@ -41,10 +41,11 @@ message = b'hello server'
 
 
 def connect(host, port):
-    sleep(random()/1000)
+    # sleep(random())
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.connect((host, port))
+    sock.recv(1)
     return sock
 
 
