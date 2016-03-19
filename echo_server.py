@@ -14,17 +14,17 @@ root.addHandler(ch)
 class MyClientHandler(esockets.ClientHandler):
     def handle_socket_message(self):
         message = self.recv(1024).strip()
-        print('Client: ', message)
+        # print('Client: ', message)
         self.send(b'Server: ' + message + b'\n')
         return True
 
     def handle_socket_accept(self):
-        print(self.address, ' Connected: ')
+        # print(self.address, ' Connected')
         return True
 
     def handle_socket_close(self, reason=''):
         self.send(b'Closing socket: ' + reason.encode() + b'\n')
-        print(self.address, ' Disconnected: ', reason)
+        # print(self.address, ' Disconnected: ', reason)
 
 #
 # # server = esockets.SocketServer(handle_incoming=handle_incoming,
