@@ -38,7 +38,7 @@ host = sys.argv[1]
 port = int(sys.argv[2])
 # host = '130.240.202.41'
 server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
-                               queue_size=1024)
+                               queue_size=131072)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))
