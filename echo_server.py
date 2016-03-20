@@ -2,14 +2,14 @@
 import esockets
 import logging, sys
 import threading
-root = logging.getLogger()
-root.setLevel(logging.ERROR)
-fh = logging.FileHandler('spam.log')
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-root.addHandler(ch)
+# root = logging.getLogger()
+# root.setLevel(logging.ERROR)
+# # fh = logging.FileHandler('spam.log')
+# ch = logging.StreamHandler(sys.stdout)
+# ch.setLevel(logging.DEBUG)
+# formatter = logging.Formatter('%(levelname)s - %(message)s')
+# ch.setFormatter(formatter)
+# root.addHandler(ch)
 #
 class MyClientHandler(esockets.ClientHandler):
     def handle_socket_message(self):
