@@ -239,9 +239,15 @@ class SocketServer:
                  host=socket.gethostbyname(socket.gethostname()),
                  queue_size=1000,
                  block_time=2,
-                 selector=selectors.EpollSelector,
+                 selector=None,
                  client_handler=ClientHandler,
                  max_subthreads=-1):
+
+        if selector is None:
+            try:
+                selector = selectors.EpollSelector
+            except AttributeError:
+                selector = selectors.SelectSelector
 
         self.port = port
         self.host = host

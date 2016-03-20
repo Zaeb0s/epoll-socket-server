@@ -4,7 +4,8 @@ import socket
 import threading
 
 # host = '192.168.1.5'
-host = '130.240.202.41'
+# host = '130.240.202.41'
+host = '213.113.2.64'
 port = 8000
 
 no_clients = 20
@@ -60,10 +61,8 @@ def users(no_users):
 
 # threading.Thread(target=send_messages).start()
 
-threading.Thread(target=users, args=(1000,)).start()
-threading.Thread(target=users, args=(1000,)).start()
-threading.Thread(target=users, args=(1000,)).start()
-threading.Thread(target=users, args=(1000,)).start()
+for i in range(20):
+    threading.Thread(target=users, args=(5000,)).start()
 
 
 
