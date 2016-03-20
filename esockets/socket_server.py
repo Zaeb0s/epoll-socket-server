@@ -247,7 +247,7 @@ class SocketServer:
             try:
                 selector = selectors.EpollSelector
             except AttributeError:
-                selector = selectors.SelectSelector
+                selector = selectors.PollSelector
 
         self.port = port
         self.host = host
