@@ -21,7 +21,7 @@ class MyClientHandler(esockets.ClientHandler):
 
     def handle_socket_accept(self):
         # print(self.address, ' Connected')
-        self.send(b'1')
+        # self.send(b'1')
         return True
 
     def handle_socket_close(self, reason=''):

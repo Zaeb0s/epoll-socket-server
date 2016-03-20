@@ -7,8 +7,6 @@ from time import sleep
 # host = '192.168.1.5'
 # host = '130.240.202.41'
 
-port = 8000
-
 no_clients = 20
 messages_per_second = 0.0000001
 message = b'hello server'
@@ -36,6 +34,8 @@ message = b'hello server'
 #         sleep(max(0, 1/messages_per_second - (t2-t1)))
 
 
+host = '192.168.1.7'
+port = 8000
 def connect(host, port):
     sleep(random()/100)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
