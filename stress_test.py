@@ -2,7 +2,8 @@
 
 import socket
 import threading
-
+from random import random
+from time import sleep
 # host = '192.168.1.5'
 # host = '130.240.202.41'
 
@@ -36,11 +37,11 @@ message = b'hello server'
 
 
 def connect(host, port):
-    # sleep(random())
+    sleep(random()/100)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.connect((host, port))
-    sock.recv(1)
+    # sock.recv(1)
     return sock
 
 
