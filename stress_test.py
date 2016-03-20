@@ -5,7 +5,7 @@ import threading
 
 # host = '192.168.1.5'
 # host = '130.240.202.41'
-host = '213.113.2.64'
+
 port = 8000
 
 no_clients = 20

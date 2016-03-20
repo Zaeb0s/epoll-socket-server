@@ -2,14 +2,14 @@
 import esockets
 import logging, sys
 import threading
-root = logging.getLogger()
-root.setLevel(logging.ERROR)
-fh = logging.FileHandler('spam.log')
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-root.addHandler(ch)
+# root = logging.getLogger()
+# root.setLevel(logging.ERROR)
+# # fh = logging.FileHandler('spam.log')
+# ch = logging.StreamHandler(sys.stdout)
+# ch.setLevel(logging.DEBUG)
+# formatter = logging.Formatter('%(levelname)s - %(message)s')
+# ch.setFormatter(formatter)
+# root.addHandler(ch)
 #
 class MyClientHandler(esockets.ClientHandler):
     def handle_socket_message(self):
@@ -33,11 +33,12 @@ class MyClientHandler(esockets.ClientHandler):
 # # server = esockets.SocketServer(handle_incoming=handle_incoming,
 # #                                handle_readable=handle_readable,
 # #                                handle_closed=handle_closed)
-host = 'localhost'
-port = int(sys.argv[1])
-host = '130.240.202.41'
+# host = 'localhost'
+host = sys.argv[1]
+port = int(sys.argv[2])
+# host = '130.240.202.41'
 server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
-                               queue_size=10)
+                               queue_size=1024)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))

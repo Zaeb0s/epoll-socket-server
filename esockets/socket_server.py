@@ -258,6 +258,7 @@ class SocketServer:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_socket.setblocking(False)
+        self._server_socket.settimeout(block_time)
 
         self.clients = []
         self.clients_selector = selector()
@@ -283,18 +284,20 @@ class SocketServer:
         """Accepts new clients and sends them to the to _handle_accepted within a subthread
         """
         try:
-            if self.server_selector.select(timeout=self.block_time):
-                pair = self.accept()
-                if pair is not None:
-                    client = self.client_handler()
-                    client._socket, client._address = pair
-                    client._socket.setblocking(False)
-                    client._server = self
-                    self.clients.append(client)
-                    logging.debug('New connection: {} ({})'.format(client.address(), len(self.clients)))
-                    self._threads_limiter.start_thread(target=client._handle_socket_accept)
+            # if self.server_selector.select(timeout=self.block_time):
+            #     pair = self.accept()
+                pair = self._server_socket.accept()
+                # if pair is not None:
 
-        except socket.error:
+                client = self.client_handler()
+                client._socket, client._address = pair
+                client._socket.setblocking(False)
+                client._server = self
+                self.clients.append(client)
+                logging.debug('New connection: {} ({})'.format(client.address(), len(self.clients)))
+                self._threads_limiter.start_thread(target=client._handle_socket_accept)
+
+        except (socket.error, socket.timeout):
             pass
 
     @Log('errors')
