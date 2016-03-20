@@ -245,9 +245,12 @@ class SocketServer:
 
         if selector is None:
             try:
-                selector = selectors.EpollSelector
+                selector = selectors.KqueueSelector
             except AttributeError:
-                selector = selectors.PollSelector
+                try:
+                    selector = selectors.EpollSelector
+                except AttributeError:
+                    selector = selectors.PollSelector
 
         self.port = port
         self.host = host
