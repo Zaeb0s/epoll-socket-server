@@ -34,9 +34,10 @@ class MyClientHandler(esockets.ClientHandler):
 # #                                handle_readable=handle_readable,
 # #                                handle_closed=handle_closed)
 # host = 'localhost'
-port = int(sys.argv[1])
-host = '130.240.202.41'
-server = esockets.SocketServer(port=port, client_handler=MyClientHandler,
+host = int(sys.argv[1])
+port = int(sys.argv[2])
+# host = '130.240.202.41'
+server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
                                queue_size=1024)
 #
 server.start()
