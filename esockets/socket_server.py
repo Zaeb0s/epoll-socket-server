@@ -303,7 +303,7 @@ class SocketServer:
         try:
             # if self.server_selector.select(timeout=self.block_time):
             events = self.server_selector.select(timeout=self.block_time+2)
-            print(events)
+            # print(events)
             for key, mask in events:
                 print(key, mask)
                 if mask == selectors.EVENT_READ:
