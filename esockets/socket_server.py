@@ -310,9 +310,10 @@ class SocketServer:
     def _mainthread_accept_clients(self):
         """Accepts new clients and sends them to the to _handle_accepted within a subthread
         """
-        print('Accept thread')
+        # print('Accept thread')
         try:
             # if self.server_selector.select(timeout=self.block_time):
+            # Kqueue does not block if no clients are in the selector object
             events = self.server_selector.select(timeout=self.block_time+2)
             for key, mask in events:
                 if mask == selectors.EVENT_READ:
@@ -342,7 +343,7 @@ class SocketServer:
         """Searches for readable client sockets. These sockets are then put in a subthread
         to be handled by _handle_readable
         """
-        print('Poll thread')
+        # print('Poll thread')
         events = self.clients_selector.select(self.block_time)
         for key, mask in events:
             if mask == selectors.EVENT_READ:
@@ -355,7 +356,7 @@ class SocketServer:
         """Checks if the client.activity == True
         if not closes the socket
         """
-        print('Activity thread')
+        # print('Activity thread')
         sleep(self.block_time)
         if self._last_activity_check + self.check_activity < time():
             self._last_activity_check = time()
