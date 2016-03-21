@@ -5,7 +5,7 @@ import loopfunction
 import logging
 import maxthreads
 from time import sleep, time
-from threading import Lock
+from threading import Lock, Event
 from errno import EALREADY, EINPROGRESS, EWOULDBLOCK, ECONNRESET, EINVAL, \
      ENOTCONN, ESHUTDOWN, EISCONN, EBADF, ECONNABORTED, EPIPE, EAGAIN, \
      errorcode
@@ -273,7 +273,8 @@ class SocketServer:
         self._server_sockets = []
         self.clients_selector = selector()
         self.server_selector = selector()
-
+        self.clients_registered = 0
+        self.register_event = Event()
         # Make a server socket for each port
         for i in self.port:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -306,15 +307,15 @@ class SocketServer:
 
         self._threads_limiter = maxthreads.MaxThreads(max_subthreads)
 
+
     @Log('errors')
     def _mainthread_accept_clients(self):
         """Accepts new clients and sends them to the to _handle_accepted within a subthread
         """
-        # print('Accept thread')
+        print('Accept thread')
         try:
             # if self.server_selector.select(timeout=self.block_time):
-            # Kqueue does not block if no clients are in the selector object
-            events = self.server_selector.select(timeout=self.block_time+2)
+            events = self.server_selector.select(timeout=self.block_time)
             for key, mask in events:
                 if mask == selectors.EVENT_READ:
                     logging.debug('Detected an incoming connection')
@@ -343,20 +344,24 @@ class SocketServer:
         """Searches for readable client sockets. These sockets are then put in a subthread
         to be handled by _handle_readable
         """
-        # print('Poll thread')
+        print('Poll thread')
+        # Kqueue does not block if no clients are in the selector object
+        if self.clients_registered == 0:
+            self.register_event.wait(self.block_time)
+
         events = self.clients_selector.select(self.block_time)
         for key, mask in events:
             if mask == selectors.EVENT_READ:
                 client = key.fileobj
                 client.activity = True
-                client.selector_unregister()
+                self.unregister(client)
                 self._threads_limiter.start_thread(target=client._handle_socket_message)
 
     def _mainthread_check_activity(self):
         """Checks if the client.activity == True
         if not closes the socket
         """
-        # print('Activity thread')
+        print('Activity thread')
         sleep(self.block_time)
         if self._last_activity_check + self.check_activity < time():
             self._last_activity_check = time()
@@ -366,7 +371,21 @@ class SocketServer:
                 else:
                     client.activity = False
 
+    def register(self, client):
+        client.socket_registered = True
+        self.clients_selector.register(client, selectors.EVENT_READ)
+        if self.clients_registered == 0:
+            self.register_event.set()
+        self.clients_registered += 1
 
+
+
+    def unregister(self, client):
+        client.socket_registered = False
+        self.clients_selector.unregister(client)
+        self.clients_registered -= 1
+        if self.clients_registered == 0:
+            self.register_event.clear()
     # @Log('errors')
     # def _subthread_handle_accepted(self, client):
     #     """Gets accepted clients from the queue object and sets up the client socket.
