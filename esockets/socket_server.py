@@ -488,12 +488,12 @@ class SocketServer:
         finally:
             self.server_selector.register(server_socket, selectors.EVENT_READ)
 
-    def monitor(self, intervall):
+    def monitor(self, intervall=1.5):
         try:
             while True:
                 os.system('clear')
                 print('Clients: ', len(self.clients))
-                print('RMU: ', get_resident_memory_usage())
+                print('RMU: {} MB ({} bytes) '.format(get_resident_memory_usage()/1e6, get_resident_memory_usage()))
                 print('Total CPU load: ', psutil.cpu_percent())
                 print('Messages sent: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgsnd)
                 print('Messages received: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgrcv)
