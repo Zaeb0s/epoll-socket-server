@@ -56,8 +56,11 @@ def users(no_users, port):
         no_to_connect = no_users - len(clients)
         for i in range(no_to_connect):
             # port = ports[i % len(ports)]
-            clients.append(connect(host, port))
-            print('Connected: {}:{}'.format(host,port))
+            try:
+                clients.append(connect(host, port))
+                print('Connected: {}:{}'.format(host,port))
+            except:
+                pass
     elif no_users < len(clients):
         no_to_close = len(clients) - no_users
         for i in range(no_to_close):
