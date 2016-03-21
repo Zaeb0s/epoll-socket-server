@@ -493,11 +493,11 @@ class SocketServer:
             while True:
                 os.system('clear')
                 print('Clients: ', len(self.clients))
-                print('RMU: {} MB ({} bytes) '.format(get_resident_memory_usage()/1e6, get_resident_memory_usage()))
-                print('Total CPU load: ', psutil.cpu_percent())
+                print('RMU: {} MB ({} bytes) '.format(get_resident_memory_usage()/1e3, get_resident_memory_usage()))
+                print('Total CPU load: {} %'.format(psutil.cpu_percent()))
                 print('Messages sent: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgsnd)
                 print('Messages received: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgrcv)
-                print('Shared memory size: ', resource.getrusage(resource.RUSAGE_SELF).ru_ixrss)
+                print('Shared memory size: {} MB'.format(resource.getrusage(resource.RUSAGE_SELF).ru_ixrss/1e3))
 
                 sleep(intervall)
         except KeyboardInterrupt:
