@@ -42,7 +42,7 @@ except IndexError:
 
 # host = '130.240.202.41'
 server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
-                               queue_size=131072)
+                               queue_size=10)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))
