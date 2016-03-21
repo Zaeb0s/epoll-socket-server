@@ -4,7 +4,7 @@ import socket
 import loopfunction
 import logging
 import maxthreads
-from time import sleep
+from time import sleep, time
 from threading import Lock
 from errno import EALREADY, EINPROGRESS, EWOULDBLOCK, ECONNRESET, EINVAL, \
      ENOTCONN, ESHUTDOWN, EISCONN, EBADF, ECONNABORTED, EPIPE, EAGAIN, \
@@ -295,7 +295,7 @@ class SocketServer:
                               on_start=lambda: logging.info('Thread started: Poll for readable clients'),
                               on_stop=lambda: logging.info('Thread stopped: Poll for readable clients')),
         )
-
+        self._last_activity_check = 0  # for the activity loop
         if check_activity > 0:
             self._loop_objects += (loopfunction.Loop(
                 target=self._mainthread_check_activity,
@@ -352,12 +352,14 @@ class SocketServer:
         """Checks if the client.activity == True
         if not closes the socket
         """
-        sleep(self.check_activity)
-        for client in self.clients:
-            if not client.activity:
-                client.close('Socket timed out')
-            else:
-                client.activity = False
+        sleep(self.block_time)
+        if self._last_activity_check + self.check_activity < time():
+            self._last_activity_check = time()
+            for client in self.clients:
+                if not client.activity:
+                    client.close('Socket closed due to inactivity')
+                else:
+                    client.activity = False
 
 
     # @Log('errors')

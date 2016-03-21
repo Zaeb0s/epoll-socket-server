@@ -38,11 +38,11 @@ except IndexError:
 try:
     port = int(sys.argv[2])
 except IndexError:
-    port = range(8000, 8100)
+    port = range(8000, 8050)
 
 # host = '130.240.202.41'
 server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
-                               queue_size=1000, check_activity=200)
+                               queue_size=1000, check_activity=10)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))
