@@ -275,7 +275,7 @@ class SocketServer:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setblocking(False)
             self._server_sockets.append(sock)
-            self.server_selector.register(sock, selectors.EVENT_WRITE)
+            self.server_selector.register(sock, selectors.EVENT_READ)
 
         # self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -302,8 +302,8 @@ class SocketServer:
         """
         try:
             # if self.server_selector.select(timeout=self.block_time):
-            events = self.server_selector.select(timeout=self.block_time)
-            #print('Event trigger')
+            events = self.server_selector.select(timeout=self.block_time+2)
+            print(events)
             for key, mask in events:
                 print(key, mask)
                 if mask == selectors.EVENT_READ:
