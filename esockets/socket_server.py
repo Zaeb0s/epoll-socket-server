@@ -352,6 +352,7 @@ class SocketServer:
             if mask == selectors.EVENT_READ:
                 client = key.fileobj
                 client.activity = True
+                print('Acrivity from: {}'.format(client.address()))
                 self.unregister(client)
                 self._threads_limiter.start_thread(target=client._handle_socket_message)
 
@@ -363,8 +364,13 @@ class SocketServer:
         sleep(self.block_time)
         if self._last_activity_check + self.check_activity < time():
             self._last_activity_check = time()
-            for client in self.clients:
-                if not client.activity:
+
+            # making a copy because self.clients might change during looptime
+            clients = list(self.clients)
+
+            for client in clients:
+                # checking client.socket_closed in case socket was closed between list copy and this call
+                if not client.activity and not client.socket_closed:
                     client.close('Socket closed due to inactivity')
                 else:
                     client.activity = False
