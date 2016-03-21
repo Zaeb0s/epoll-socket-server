@@ -34,7 +34,7 @@ message = b'hello server'
 #         sleep(max(0, 1/messages_per_second - (t2-t1)))
 
 
-host = '192.168.1.7'
+host = '192.168.1.28'
 # host = '213.113.6.13'
 ports = range(8000, 8100)
 

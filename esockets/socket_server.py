@@ -98,7 +98,7 @@ class ClientHandler:
         finally:
             self._server.clients.remove(self)
             self._socket.close()
-            logging.debug('Connection lost: {} ({})'.format(self.address(), reason))
+            logging.info('Connection lost: {} ({})'.format(self.address(), reason))
 
     def address(self):
         return '{}:{}'.format(self._address[0], self._address[1])
@@ -185,6 +185,7 @@ class ClientHandler:
                     raise ConnectionClosed('Connection closed ({})'.format(why))
             else:
                 raise
+
 
 class Log:
     INDENTATION = 4
