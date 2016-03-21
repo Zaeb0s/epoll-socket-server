@@ -34,7 +34,7 @@ class ClientHandler:
         try:
             value = self.handle_socket_accept()
             if value is True:
-                self.selector_register()
+                self._server.register(self)
             else:
                 self.close(value or '')
         except ConnectionClosed:
@@ -46,7 +46,7 @@ class ClientHandler:
         try:
             value = self.handle_socket_message()
             if value is True:
-                self.selector_register()
+                self._server.register(self)
             else:
                 self.close(value or '')
         except ConnectionClosed:
@@ -74,20 +74,20 @@ class ClientHandler:
     def fileno(self):
         return self._socket.fileno()
 
-    def selector_register(self):
-        self.socket_registered = True
-        self._server.clients_selector.register(self, selectors.EVENT_READ)
-
-    def selector_unregister(self):
-        self.socket_registered = False
-        self._server.clients_selector.unregister(self)
+    # def selector_register(self):
+    #     self.socket_registered = True
+    #     self._server.clients_selector.register(self, selectors.EVENT_READ)
+    #
+    # def selector_unregister(self):
+    #     self.socket_registered = False
+    #     self._server.clients_selector.unregister(self)
 
     def close(self, reason, how=socket.SHUT_RDWR):
         try:
             self.socket_closed = True
             self.handle_socket_close(reason)
             if self.socket_registered:
-                self.selector_unregister()
+                self._server.unregister(self)
             try:
                 self._socket.shutdown(how)
             except socket.error:
