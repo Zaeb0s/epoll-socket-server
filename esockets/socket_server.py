@@ -4,6 +4,7 @@ import socket
 import loopfunction
 import logging
 import maxthreads
+from time import sleep
 from threading import Lock
 from errno import EALREADY, EINPROGRESS, EWOULDBLOCK, ECONNRESET, EINVAL, \
      ENOTCONN, ESHUTDOWN, EISCONN, EBADF, ECONNABORTED, EPIPE, EAGAIN, \
@@ -27,6 +28,7 @@ class ClientHandler:
         self._send_lock = Lock()
         self.socket_closed = False
         self.socket_registered = False
+        self.activity = True
 
     def _handle_socket_accept(self):
         try:
@@ -242,7 +244,8 @@ class SocketServer:
                  block_time=2,
                  selector=None,
                  client_handler=ClientHandler,
-                 max_subthreads=-1):
+                 max_subthreads=-1,
+                 check_activity=-1):
 
         if selector is None:
             try:
@@ -263,6 +266,7 @@ class SocketServer:
         self.queue_size = queue_size
         self.block_time = block_time
         self.client_handler = client_handler
+        self.check_activity = check_activity
 
         self.clients = []
         self._server_sockets = []
@@ -290,8 +294,14 @@ class SocketServer:
             loopfunction.Loop(target=self._mainthread_poll_readable,
                               on_start=lambda: logging.info('Thread started: Poll for readable clients'),
                               on_stop=lambda: logging.info('Thread stopped: Poll for readable clients')),
-
         )
+
+        if check_activity > 0:
+            self._loop_objects += (loopfunction.Loop(
+                target=self._mainthread_check_activity,
+                on_start=lambda: logging.info('Thread started: Close inactive sockets'),
+                on_stop=lambda: logging.info('Thread stopped: Close inactive sockets')),)
+
 
         self._threads_limiter = maxthreads.MaxThreads(max_subthreads)
 
@@ -334,8 +344,21 @@ class SocketServer:
         for key, mask in events:
             if mask == selectors.EVENT_READ:
                 client = key.fileobj
+                client.activity = True
                 client.selector_unregister()
                 self._threads_limiter.start_thread(target=client._handle_socket_message)
+
+    def _mainthread_check_activity(self):
+        """Checks if the client.activity == True
+        if not closes the socket
+        """
+        sleep(self.check_activity)
+        for client in self.clients:
+            if not client.activity:
+                client.close('Socket timed out')
+            else:
+                client.activity = False
+
 
     # @Log('errors')
     # def _subthread_handle_accepted(self, client):

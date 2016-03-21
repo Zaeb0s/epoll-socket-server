@@ -3,7 +3,7 @@ import esockets
 import logging, sys
 import socket
 root = logging.getLogger()
-root.setLevel(logging.ERROR)
+root.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(levelname)s - %(message)s')
@@ -42,7 +42,7 @@ except IndexError:
 
 # host = '130.240.202.41'
 server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
-                               queue_size=1000)
+                               queue_size=1000, check_activity=200)
 #
 server.start()
 # print('Server started on: {}:{}'.format(server.host, server.port))
