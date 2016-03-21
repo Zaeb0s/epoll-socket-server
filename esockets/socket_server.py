@@ -304,15 +304,13 @@ class SocketServer:
                 on_start=lambda: logging.info('Thread started: Close inactive sockets'),
                 on_stop=lambda: logging.info('Thread stopped: Close inactive sockets')),)
 
-
         self._threads_limiter = maxthreads.MaxThreads(max_subthreads)
-
 
     @Log('errors')
     def _mainthread_accept_clients(self):
         """Accepts new clients and sends them to the to _handle_accepted within a subthread
         """
-        print('Accept thread')
+        # print('Accept thread')
         try:
             # if self.server_selector.select(timeout=self.block_time):
             events = self.server_selector.select(timeout=self.block_time)
@@ -344,9 +342,8 @@ class SocketServer:
         """Searches for readable client sockets. These sockets are then put in a subthread
         to be handled by _handle_readable
         """
-        print('Poll thread')
+        # print('Poll thread')
         # Kqueue does not block if no clients are in the selector object
-
         if self.clients_registered == 0:
             self.register_event.wait(self.block_time)
 
@@ -378,8 +375,6 @@ class SocketServer:
         if self.clients_registered == 0:
             self.register_event.set()
         self.clients_registered += 1
-
-
 
     def unregister(self, client):
         client.socket_registered = False

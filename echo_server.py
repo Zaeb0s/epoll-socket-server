@@ -3,7 +3,7 @@ import esockets
 import logging, sys
 import socket
 root = logging.getLogger()
-root.setLevel(logging.INFO)
+root.setLevel(logging.ERROR)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(levelname)s - %(message)s')
