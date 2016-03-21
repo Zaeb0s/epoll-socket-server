@@ -346,8 +346,8 @@ class SocketServer:
         """
         print('Poll thread')
         # Kqueue does not block if no clients are in the selector object
-        if self.clients_registered == 0:
-            self.register_event.wait(self.block_time)
+
+        self.register_event.wait(self.block_time)
 
         events = self.clients_selector.select(self.block_time)
         for key, mask in events:
