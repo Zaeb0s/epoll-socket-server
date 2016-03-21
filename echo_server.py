@@ -32,12 +32,13 @@ class MyClientHandler(esockets.ClientHandler):
 try:
     host = sys.argv[1]
 except IndexError:
+    # host = '192.168.56.1'
     host = socket.gethostbyname(socket.gethostname())
 
 try:
     port = int(sys.argv[2])
 except IndexError:
-    port = range(8000, 8020)
+    port = range(8000, 8030)
 
 # host = '130.240.202.41'
 server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,

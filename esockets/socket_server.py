@@ -303,8 +303,8 @@ class SocketServer:
         try:
             # if self.server_selector.select(timeout=self.block_time):
             events = self.server_selector.select(timeout=self.block_time)
-
             for key, mask in events:
+                print(key, mask)
                 if mask == selectors.EVENT_READ:
                     logging.debug('Detected an incoming connection')
                     # Deregister the server socket while accepting new client
