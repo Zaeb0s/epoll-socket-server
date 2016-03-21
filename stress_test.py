@@ -35,8 +35,10 @@ message = b'hello server'
 
 
 # host = '192.168.1.7'
-host = '213.113.2.64'
-port = 8000
+host = '213.113.6.178'
+ports = range(8000, 8020)
+
+
 def connect(host, port):
     # sleep(random()/100)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -47,10 +49,12 @@ def connect(host, port):
 
 
 clients = []
+i = 0
 def users(no_users):
     if no_users > len(clients):
         no_to_connect = no_users - len(clients)
         for i in range(no_to_connect):
+            port = ports[i % len(ports)]
             clients.append(connect(host, port))
     elif no_users < len(clients):
         no_to_close = len(clients) - no_users

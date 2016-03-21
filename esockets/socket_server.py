@@ -100,6 +100,7 @@ class ClientHandler:
 
     def address(self):
         return '{}:{}'.format(self._address[0], self._address[1])
+
     # def _send(self, bytes, timeout=-1):
     #     total_sent = 0
     #     msg_len = len(bytes)
@@ -235,7 +236,7 @@ class SocketServer:
 
     @Log('errors')
     def __init__(self,
-                 port=1234,
+                 port=(1234,),
                  host=socket.gethostbyname(socket.gethostname()),
                  queue_size=1000,
                  block_time=2,
@@ -251,23 +252,36 @@ class SocketServer:
                     selector = selectors.EpollSelector
                 except AttributeError:
                     selector = selectors.PollSelector
+        logging.info('Using selector: {}'.format(selector.__doc__))
 
-        self.port = port
+        if not hasattr(port, '__iter__'):
+            self.port = [port]
+        else:
+            self.port = port
+
         self.host = host
         self.queue_size = queue_size
         self.block_time = block_time
         self.client_handler = client_handler
 
-        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._server_socket.setblocking(False)
-        self._server_socket.settimeout(block_time)
-
         self.clients = []
         self.clients_selector = selector()
         self.server_selector = selector()
 
-        self.server_selector.register(self._server_socket, selectors.EVENT_READ)
+        self._server_sockets = []
+        # Make a server socket for each port
+        for i in self.port:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.setblocking(False)
+            self._server_sockets.append(sock)
+            self.server_selector.register(sock, selectors.EVENT_READ)
+
+        # self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # self._server_socket.setblocking(False)
+        # self._server_socket.settimeout(block_time)
+        # self.server_selector.register(self._server_socket, selectors.EVENT_READ)
 
         self._loop_objects = (
             loopfunction.Loop(target=self._mainthread_accept_clients,
@@ -288,17 +302,27 @@ class SocketServer:
         """
         try:
             # if self.server_selector.select(timeout=self.block_time):
+            events = self.server_selector.select(timeout=self.block_time)
+
+            for key, mask in events:
+                if mask == selectors.EVENT_READ:
+                    logging.debug('Detected an incoming connection')
+                    # Deregister the server socket while accepting new client
+                    self.server_selector.unregister(key.fileobj)
+                    self._threads_limiter.start_thread(target=self.accept,
+                                                       args=(key.fileobj,))
+
             #     pair = self.accept()
-                pair = self._server_socket.accept()
+            #     pair = self._server_socket.accept(server_socket)
                 # if pair is not None:
 
-                client = self.client_handler()
-                client._socket, client._address = pair
-                client._socket.setblocking(False)
-                client._server = self
-                self.clients.append(client)
-                logging.debug('New connection: {} ({})'.format(client.address(), len(self.clients)))
-                self._threads_limiter.start_thread(target=client._handle_socket_accept)
+                # client = self.client_handler()
+                # client._socket, client._address = pair
+                # client._socket.setblocking(False)
+                # client._server = self
+                # self.clients.append(client)
+                # logging.debug('New connection: {} ({})'.format(client.address(), len(self.clients)))
+                # self._threads_limiter.start_thread(target=client._handle_socket_accept)
 
         except (socket.error, socket.timeout):
             pass
@@ -348,13 +372,16 @@ class SocketServer:
     #         if not client.socket_closed:
     #             client.selector_register()
 
-    @Log('all')
+    @Log('errors')
     def start(self):
-        logging.info('Binding server socket to {}:{}'.format(self.host, self.port))
-        self._server_socket.bind((self.host, self.port))
 
-        self._server_socket.listen(self.queue_size)
-        logging.info('Server socket now listening (queue_size={})'.format(self.queue_size))
+        # Binding server sockets to the ports
+        for i in range(len(self.port)):
+            logging.info('Binding server socket to {}:{}'.format(self.host, self.port[i]))
+            self._server_sockets[i].bind((self.host, self.port[i]))
+            self._server_sockets[i].listen(self.queue_size)
+
+        logging.info('Server sockets now listening (queue_size={})'.format(self.queue_size))
 
         logging.info('Starting main threads...')
         for loop_obj in self._loop_objects:
@@ -362,7 +389,7 @@ class SocketServer:
 
         logging.info('Main threads started')
 
-    @Log('all')
+    @Log('errors')
     def stop(self):
         logging.info('Closing all ({}) connections...'.format(len(self.clients)))
 
@@ -377,16 +404,19 @@ class SocketServer:
         for loop_obj in self._loop_objects:
             loop_obj.stop(silent=True)
 
-        logging.info('Shutting down server socket...')
-        self._server_socket.shutdown(socket.SHUT_RDWR)
-        logging.info('Closing server socket...')
-        self._server_socket.close()
+        logging.info('Closing selectors...')
+        self.server_selector.close()
+        self.clients_selector.close()
 
-    def accept(self):
-        """ Returns either an address pair or None
-        """
+        logging.info('Closing server sockets...')
+        for server_socket in self._server_sockets:
+            server_socket.shutdown(socket.SHUT_RDWR)
+            server_socket.close()
+
+    def accept(self, server_socket):
         try:
-            conn, addr = self._server_socket.accept()
+            pair = server_socket.accept()
+            logging.debug('Accepted connection from: {}:{}'.format(pair[1][0], pair[1][1]))
         except TypeError:
             return None
         except OSError as why:
@@ -395,7 +425,15 @@ class SocketServer:
             else:
                 raise
         else:
-            return conn, addr
+            client = self.client_handler()
+            client._socket, client._address = pair
+            client._socket.setblocking(False)
+            client._server = self
+            self.clients.append(client)
+            client._handle_socket_accept()
+        finally:
+            self.server_selector.register(server_socket, selectors.EVENT_READ)
+
 
 def get_resident_memory_usage():
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
