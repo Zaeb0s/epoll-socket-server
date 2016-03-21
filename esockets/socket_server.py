@@ -302,9 +302,7 @@ class SocketServer:
         try:
             # if self.server_selector.select(timeout=self.block_time):
             events = self.server_selector.select(timeout=self.block_time+2)
-            # print(events)
             for key, mask in events:
-                print(key, mask)
                 if mask == selectors.EVENT_READ:
                     logging.debug('Detected an incoming connection')
                     # Deregister the server socket while accepting new client
@@ -380,6 +378,8 @@ class SocketServer:
             logging.info('Binding server socket to {}:{}'.format(self.host, self.port[i]))
             self._server_sockets[i].bind((self.host, self.port[i]))
             self._server_sockets[i].listen(self.queue_size)
+
+            # The socket has to be registered after bind/listen is called for Kqueue to work
             self.server_selector.register(self._server_sockets[i], selectors.EVENT_READ)
 
         logging.info('Server sockets now listening (queue_size={})'.format(self.queue_size))
