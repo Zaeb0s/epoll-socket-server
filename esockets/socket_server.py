@@ -275,7 +275,7 @@ class SocketServer:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setblocking(False)
             self._server_sockets.append(sock)
-            self.server_selector.register(sock, selectors.EVENT_READ)
+            self.server_selector.register(self._server_sockets[-1], selectors.EVENT_READ)
 
         # self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
