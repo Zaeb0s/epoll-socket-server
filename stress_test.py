@@ -35,8 +35,8 @@ message = b'hello server'
 
 
 # host = '192.168.1.7'
-host = '213.113.6.178'
-ports = range(8000, 8020)
+host = '213.113.6.13'
+ports = range(8000, 9000)
 
 
 def connect(host, port):
@@ -50,12 +50,13 @@ def connect(host, port):
 
 clients = []
 i = 0
-def users(no_users):
+def users(no_users, port):
     if no_users > len(clients):
         no_to_connect = no_users - len(clients)
         for i in range(no_to_connect):
-            port = ports[i % len(ports)]
+            # port = ports[i % len(ports)]
             clients.append(connect(host, port))
+            print('Connected: {}:{}'.format(host,port))
     elif no_users < len(clients):
         no_to_close = len(clients) - no_users
         for i in range(no_to_close):
@@ -67,8 +68,8 @@ def users(no_users):
 
 # threading.Thread(target=send_messages).start()
 
-for i in range(200):
-    threading.Thread(target=users, args=(5000,)).start()
+for port in ports:
+    threading.Thread(target=users, args=(5000, port)).start()
 
 
 
