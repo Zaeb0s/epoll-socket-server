@@ -359,7 +359,7 @@ class SocketServer:
         """Checks if the client.activity == True
         if not closes the socket
         """
-        print('Activity thread')
+        # print('Activity thread')
         sleep(self.block_time)
         if self._last_activity_check + self.check_activity < time():
             self._last_activity_check = time()
