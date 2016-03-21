@@ -36,7 +36,7 @@ message = b'hello server'
 
 # host = '192.168.1.7'
 host = '213.113.6.13'
-ports = range(8000, 9000)
+ports = range(8000, 8100)
 
 
 def connect(host, port):

@@ -38,7 +38,7 @@ except IndexError:
 try:
     port = int(sys.argv[2])
 except IndexError:
-    port = range(8000, 9000)
+    port = range(8000, 8100)
 
 # host = '130.240.202.41'
 server = esockets.SocketServer(host=host, port=port, client_handler=MyClientHandler,
