@@ -493,11 +493,16 @@ class SocketServer:
             while True:
                 os.system('clear')
                 print('Clients: ', len(self.clients))
-                print('RMU: {} MB ({} bytes) '.format(get_resident_memory_usage()/1e3, get_resident_memory_usage()))
+                print('Resident set size: {} MB'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1e3))
+                print('Shared memory size: {} MB'.format(resource.getrusage(resource.RUSAGE_SELF).ru_ixrss/1e3))
                 print('Total CPU load: {} %'.format(psutil.cpu_percent()))
                 print('Messages sent: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgsnd)
                 print('Messages received: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgrcv)
-                print('Shared memory size: {} MB'.format(resource.getrusage(resource.RUSAGE_SELF).ru_ixrss/1e3))
+                print('Signals received: ', resource.getrusage(resource.RUSAGE_SELF).ru_nsignals)
+
+                print('Time in user mode: ', resource.getrusage(resource.RUSAGE_SELF).ru_utime)
+                print('Time in system mode: ', resource.getrusage(resource.RUSAGE_SELF).ru_stime)
+
 
                 sleep(intervall)
         except KeyboardInterrupt:
