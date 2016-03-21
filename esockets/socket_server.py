@@ -4,6 +4,8 @@ import socket
 import loopfunction
 import logging
 import maxthreads
+import os  # for clearing the screen in monitor
+import psutil  # for cpu_load
 from time import sleep, time
 from threading import Lock, Event
 from errno import EALREADY, EINPROGRESS, EWOULDBLOCK, ECONNRESET, EINVAL, \
@@ -486,6 +488,20 @@ class SocketServer:
         finally:
             self.server_selector.register(server_socket, selectors.EVENT_READ)
 
+    def monitor(self, intervall):
+        try:
+            while True:
+                os.system('clear')
+                print('Clients: ', len(self.clients))
+                print('RMU: ', get_resident_memory_usage())
+                print('Total CPU load: ', psutil.cpu_percent())
+                print('Messages sent: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgsnd)
+                print('Messages received: ', resource.getrusage(resource.RUSAGE_SELF).ru_msgrcv)
+                print('Shared memory size: ', resource.getrusage(resource.RUSAGE_SELF).ru_ixrss)
+
+                sleep(intervall)
+        except KeyboardInterrupt:
+            pass
 
 def get_resident_memory_usage():
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
