@@ -265,17 +265,16 @@ class SocketServer:
         self.client_handler = client_handler
 
         self.clients = []
+        self._server_sockets = []
         self.clients_selector = selector()
         self.server_selector = selector()
 
-        self._server_sockets = []
         # Make a server socket for each port
         for i in self.port:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setblocking(False)
             self._server_sockets.append(sock)
-            self.server_selector.register(self._server_sockets[-1], selectors.EVENT_READ)
 
         # self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -381,6 +380,7 @@ class SocketServer:
             logging.info('Binding server socket to {}:{}'.format(self.host, self.port[i]))
             self._server_sockets[i].bind((self.host, self.port[i]))
             self._server_sockets[i].listen(self.queue_size)
+            self.server_selector.register(self._server_sockets[i], selectors.EVENT_READ)
 
         logging.info('Server sockets now listening (queue_size={})'.format(self.queue_size))
 
