@@ -66,7 +66,7 @@ class ClientHandler:
         """Return string or False: the socket is closed and handle_socket_close is called
          with reason=string/'' Return True the socket is registered to the client selector
         """
-        pass
+        return True
 
     def handle_socket_close(self, reason):
         """Called before the socket is closed
